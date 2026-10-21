@@ -4,17 +4,17 @@ import React, { useState, useEffect } from "react";
 import "./globals.css";
 
 // Función Experta de Procesamiento de Texto (NLP Avanzado Local)
-function procesarTextoExperto(textoCrudo, titulo, organizacion) {
+function procesarTextoExperto(textoCrudo, titulo, organizacion, area) {
   if (!textoCrudo || !textoCrudo.trim()) {
     return {
-      resumen: `Registro de evento: "${titulo || "Sin título"}" ${organizacion ? "con " + organizacion : ""}. Sin notas adicionales ingresadas.`,
+      resumen: `Registro de evento [${area || "General"}]: "${titulo || "Sin título"}" ${organizacion ? "con " + organizacion : ""}. Sin notas adicionales ingresadas.`,
       puntosClave: ["No se ingresaron notas textuales para analizar."],
       accionesSugeridas: ["Agregar notas o apuntes clave de la charla."],
       datosYMetricas: []
     };
   }
 
-  // 1. Limpieza y fragmentación de ideas (por saltos de línea, puntos, guiones o viñetas)
+  // Limpieza y fragmentación por saltos de línea, puntos, guiones o viñetas
   const lineasYFrases = textoCrudo
     .split(/[\n;•\-\u2022]+|\.\s+/)
     .map((item) => item.trim())
@@ -24,36 +24,24 @@ function procesarTextoExperto(textoCrudo, titulo, organizacion) {
   const datosMetricas = [];
   const ideasClave = [];
 
-  // Palabras clave para detectar acciones y tareas
   const patronAccion = /\b(hacer|contactar|revisar|llamar|pedir|enviar|comprar|implementar|cotizar|agendar|coordinar|validar|crear|desarrollar|evaluar|programar)\b/i;
-  
-  // Patrón para detectar cifras, porcentajes, montos o fechas
   const patronCifras = /(\d+[\d.,]*%?|\$\d+[\d.,]*|\b(19|20)\d{2}\b)/i;
 
-  // 2. Clasificación inteligente
   lineasYFrases.forEach((frase) => {
-    // Si contiene una acción de trabajo
     if (patronAccion.test(frase)) {
       acciones.push(frase.charAt(0).toUpperCase() + frase.slice(1));
-    } 
-    // Si contiene datos numéricos, porcentajes o fechas
-    else if (patronCifras.test(frase)) {
+    } else if (patronCifras.test(frase)) {
       datosMetricas.push(frase.charAt(0).toUpperCase() + frase.slice(1));
-    } 
-    // Ideas y conceptos clave generales
-    else {
+    } else {
       ideasClave.push(frase.charAt(0).toUpperCase() + frase.slice(1));
     }
   });
 
-  // 3. Formulación del Resumen Ejecutivo Sintético
-  const totalIdeas = ideasClave.length;
   const primeraIdea = ideasClave[0] || lineasYFrases[0] || "Puntos presentados en la sesión";
   const segundaIdea = ideasClave[1] ? ` Además, se abordó: ${ideasClave[1]}.` : "";
 
-  const resumenSintetizado = `SÍNTESIS CORTA: ${primeraIdea}.${segundaIdea}`.trim();
+  const resumenSintetizado = `SÍNTESIS CORTA [${area}]: ${primeraIdea}.${segundaIdea}`.trim();
 
-  // Acciones por defecto si no se detectaron verbos explícitos
   if (acciones.length === 0) {
     if (organizacion) acciones.push(`Hacer seguimiento institucional con ${organizacion}.`);
     acciones.push("Revisar y validar los apuntes tomados en el evento.");
@@ -72,6 +60,9 @@ export default function BitacoraIA() {
   const [titulo, setTitulo] = useState("");
   const [organizacion, setOrganizacion] = useState("");
   const [tipoEvento, setTipoEvento] = useState("Seminario");
+  const [areaTematica, setAreaTematica] = useState("IA & Tecnología");
+  const [areaPersonalizada, setAreaPersonalizada] = useState("");
+  const [fechaEvento, setFechaEvento] = useState(new Date().toISOString().slice(0, 16));
   const [ubicacion, setUbicacion] = useState("");
   const [notasCrudas, setNotasCrudas] = useState("");
 
@@ -94,6 +85,8 @@ export default function BitacoraIA() {
   // Historial con persistencia en localStorage
   const [historial, setHistorial] = useState([]);
   const [busquedaHistorial, setBusquedaHistorial] = useState("");
+  const [filtroArea, setFiltroArea] = useState("TODOS");
+  const [filtroTipo, setFiltroTipo] = useState("TODOS");
 
   // Cargar Historial y Borrador previo
   useEffect(() => {
@@ -109,6 +102,9 @@ export default function BitacoraIA() {
         if (draft.titulo) setTitulo(draft.titulo);
         if (draft.organizacion) setOrganizacion(draft.organizacion);
         if (draft.tipoEvento) setTipoEvento(draft.tipoEvento);
+        if (draft.areaTematica) setAreaTematica(draft.areaTematica);
+        if (draft.areaPersonalizada) setAreaPersonalizada(draft.areaPersonalizada);
+        if (draft.fechaEvento) setFechaEvento(draft.fechaEvento);
         if (draft.ubicacion) setUbicacion(draft.ubicacion);
         if (draft.notasCrudas) setNotasCrudas(draft.notasCrudas);
         if (draft.fotos) setFotos(draft.fotos);
@@ -127,6 +123,9 @@ export default function BitacoraIA() {
       titulo,
       organizacion,
       tipoEvento,
+      areaTematica,
+      areaPersonalizada,
+      fechaEvento,
       ubicacion,
       notasCrudas,
       fotos,
@@ -139,7 +138,7 @@ export default function BitacoraIA() {
     } catch (e) {
       console.error("Error al guardar borrador:", e);
     }
-  }, [titulo, organizacion, tipoEvento, ubicacion, notasCrudas, fotos, estrellas, valoracion, opinion]);
+  }, [titulo, organizacion, tipoEvento, areaTematica, areaPersonalizada, fechaEvento, ubicacion, notasCrudas, fotos, estrellas, valoracion, opinion]);
 
   const guardarEnLocalStorage = (nuevoHistorial) => {
     setHistorial(nuevoHistorial);
@@ -155,6 +154,9 @@ export default function BitacoraIA() {
     setOrganizacion("");
     setUbicacion("");
     setNotasCrudas("");
+    setAreaTematica("IA & Tecnología");
+    setAreaPersonalizada("");
+    setFechaEvento(new Date().toISOString().slice(0, 16));
     setFotos([]);
     setEstrellas(0);
     setValoracion(null);
@@ -164,7 +166,7 @@ export default function BitacoraIA() {
     localStorage.removeItem("bitacora_ia_borrador");
   };
 
-  // Captura inmediata de fotos
+  // Captura de fotos
   const handleCapturarFoto = (e) => {
     const files = Array.from(e.target.files);
     if (fotos.length + files.length > 7) {
@@ -247,7 +249,9 @@ export default function BitacoraIA() {
     window.open(`https://scholar.google.com/scholar?q=${encodeURIComponent(`${organizacion}${titulo}`)}`, "_blank");
   };
 
-  // Procesamiento Experto Real sobre tus notas
+  // Procesamiento Experto Real
+  const areaFinal = areaTematica === "Otro" ? (areaPersonalizada || "General") : areaTematica;
+
   const ejecutarProcesamientoExperto = () => {
     if (!titulo && fotos.length === 0 && !notasCrudas.trim()) {
       alert("Escribe notas, un título o toma una foto antes de procesar.");
@@ -256,7 +260,7 @@ export default function BitacoraIA() {
 
     setCargandoIA(true);
     setTimeout(() => {
-      const analisisReal = procesarTextoExperto(notasCrudas, titulo, organizacion);
+      const analisisReal = procesarTextoExperto(notasCrudas, titulo, organizacion, areaFinal);
       setResultadoExperto(analisisReal);
       setCargandoIA(false);
     }, 400);
@@ -271,8 +275,8 @@ export default function BitacoraIA() {
     setTimeout(() => {
       setInfoInvestigada({
         entidad: organizacion,
-        perfil: `Búsqueda rápida sugerida para "${organizacion}": Utiliza los botones superiores de LinkedIn o Scholar para revisar el perfil profesional o académico verificado.`,
-        sugerencia: "Verificar proyectos activos y publicaciones recientes en los enlaces directos."
+        perfil: `Búsqueda sugerida para "${organizacion}" [${areaFinal}]: Utiliza los accesos de LinkedIn o Scholar para revisar publicaciones y antecedentes.`,
+        sugerencia: "Verificar proyectos activos y publicaciones recientes."
       });
       setCargandoInvestigacion(false);
     }, 600);
@@ -284,7 +288,13 @@ export default function BitacoraIA() {
       return;
     }
 
-    const analisisFinal = resultadoExperto || procesarTextoExperto(notasCrudas, titulo, organizacion);
+    const analisisFinal = resultadoExperto || procesarTextoExperto(notasCrudas, titulo, organizacion, areaFinal);
+
+    // Formatear fecha legible
+    const fechaObj = new Date(fechaEvento);
+    const fechaFormateada = isNaN(fechaObj.getTime())
+      ? new Date().toLocaleString("es-CL")
+      : fechaObj.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
 
     const nuevaEntrada = {
       id: Date.now(),
@@ -292,7 +302,9 @@ export default function BitacoraIA() {
       organizacion: organizacion || "No especificada",
       ubicacion: ubicacion || "Lugar no registrado",
       tipo: tipoEvento,
-      fecha: new Date().toLocaleString("es-CL"),
+      area: areaFinal,
+      fecha: fechaFormateada,
+      fechaISO: fechaEvento,
       estrellas,
       valoracion,
       opinion,
@@ -316,12 +328,18 @@ export default function BitacoraIA() {
     }
   };
 
-  const historialFiltrado = historial.filter(
-    (item) =>
+  // Filtrado de Historial
+  const historialFiltrado = historial.filter((item) => {
+    const coincideTexto = 
       item.titulo.toLowerCase().includes(busquedaHistorial.toLowerCase()) ||
       item.organizacion.toLowerCase().includes(busquedaHistorial.toLowerCase()) ||
-      item.ubicacion.toLowerCase().includes(busquedaHistorial.toLowerCase())
-  );
+      item.ubicacion.toLowerCase().includes(busquedaHistorial.toLowerCase());
+
+    const coincideArea = filtroArea === "TODOS" || item.area === filtroArea;
+    const coincideTipo = filtroTipo === "TODOS" || item.tipo === filtroTipo;
+
+    return coincideTexto && coincideArea && coincideTipo;
+  });
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 p-4 md:p-8 font-sans">
@@ -334,7 +352,7 @@ export default function BitacoraIA() {
               <span>📓</span> Bitácora IA: Asistente Experto
             </h1>
             <p className="text-sm text-slate-500">
-              Procesamiento sintético estructurado de notas reales sin texto relleno.
+              Captura charlas pasadas y presentes, clasifica por área temática y sintetiza tus apuntes.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -360,7 +378,7 @@ export default function BitacoraIA() {
             {/* 1. Datos del Evento */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
               <div className="flex justify-between items-center border-b pb-2">
-                <h2 className="text-lg font-semibold text-slate-800">1. Datos del Evento u Organización</h2>
+                <h2 className="text-lg font-semibold text-slate-800">1. Datos del Evento / Charla</h2>
                 <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">
                   💾 Borrador autoguardado
                 </span>
@@ -373,7 +391,7 @@ export default function BitacoraIA() {
                     type="text" 
                     value={titulo} 
                     onChange={(e) => setTitulo(e.target.value)} 
-                    placeholder="Ej. Avances en Bioprocesos e IA"
+                    placeholder="Ej. Métodos de Extracción en Bioprocesos"
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
                   />
                 </div>
@@ -389,15 +407,40 @@ export default function BitacoraIA() {
                 </div>
               </div>
 
-              {/* Botones de búsqueda */}
-              <div className="pt-1 flex flex-wrap gap-2 items-center">
-                <span className="text-xs font-semibold text-slate-400 uppercase mr-1">Buscar Perfil En:</span>
-                <button type="button" onClick={abrirLinkedin} className="px-3 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-medium rounded-lg border border-sky-200 transition">💼 LinkedIn</button>
-                <button type="button" onClick={abrirGoogle} className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg border border-slate-200 transition">🔍 Google</button>
-                <button type="button" onClick={abrirGoogleScholar} className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-medium rounded-lg border border-amber-200 transition">🎓 Scholar</button>
-              </div>
+              {/* Fecha y Categoría / Área de Conocimiento */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                    📅 Fecha y Hora del Evento
+                  </label>
+                  <input 
+                    type="datetime-local" 
+                    value={fechaEvento}
+                    onChange={(e) => setFechaEvento(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm bg-white"
+                  />
+                </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                    🏷️ Área de Conocimiento
+                  </label>
+                  <select 
+                    value={areaTematica} 
+                    onChange={(e) => setAreaTematica(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm bg-white"
+                  >
+                    <option value="IA & Tecnología">IA & Tecnología</option>
+                    <option value="Ciencias & Biotecnología">Ciencias & Biotecnología</option>
+                    <option value="Arquitectura & Urbanismo">Arquitectura & Urbanismo</option>
+                    <option value="Educación & EdTech">Educación & EdTech</option>
+                    <option value="Negocios & Innovación">Negocios & Innovación</option>
+                    <option value="Economía & Finanzas">Economía & Finanzas</option>
+                    <option value="Sustentabilidad & Reciclaje">Sustentabilidad & Reciclaje</option>
+                    <option value="Otro">Otro (Especificar)</option>
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Tipo de Evento</label>
                   <select 
@@ -412,26 +455,48 @@ export default function BitacoraIA() {
                     <option value="Reunión">Reunión de Negocios</option>
                   </select>
                 </div>
+              </div>
 
+              {areaTematica === "Otro" && (
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Lugar / Ubicación</label>
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      value={ubicacion} 
-                      onChange={(e) => setUbicacion(e.target.value)} 
-                      placeholder="Ej. Providencia, Santiago"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
-                    />
-                    <button 
-                      type="button" 
-                      onClick={obtenerUbicacionGPS}
-                      disabled={cargandoGPS}
-                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium border border-slate-300 whitespace-nowrap transition"
-                    >
-                      {cargandoGPS ? "⏳..." : "📍 GPS"}
-                    </button>
-                  </div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Especifica el Área Personalizada</label>
+                  <input 
+                    type="text"
+                    value={areaPersonalizada}
+                    onChange={(e) => setAreaPersonalizada(e.target.value)}
+                    placeholder="Ej. Neurociencia, Gastronomía, Minería..."
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+              )}
+
+              {/* Botones de búsqueda externa */}
+              <div className="pt-1 flex flex-wrap gap-2 items-center">
+                <span className="text-xs font-semibold text-slate-400 uppercase mr-1">Buscar Perfil En:</span>
+                <button type="button" onClick={abrirLinkedin} className="px-3 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-medium rounded-lg border border-sky-200 transition">💼 LinkedIn</button>
+                <button type="button" onClick={abrirGoogle} className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg border border-slate-200 transition">🔍 Google</button>
+                <button type="button" onClick={abrirGoogleScholar} className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-medium rounded-lg border border-amber-200 transition">🎓 Scholar</button>
+              </div>
+
+              {/* Ubicación */}
+              <div className="pt-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Lugar / Ubicación</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={ubicacion} 
+                    onChange={(e) => setUbicacion(e.target.value)} 
+                    placeholder="Ej. Providencia, Santiago"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
+                  />
+                  <button 
+                    type="button" 
+                    onClick={obtenerUbicacionGPS}
+                    disabled={cargandoGPS}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium border border-slate-300 whitespace-nowrap transition"
+                  >
+                    {cargandoGPS ? "⏳..." : "📍 GPS"}
+                  </button>
                 </div>
               </div>
 
@@ -549,23 +614,21 @@ export default function BitacoraIA() {
               </div>
             )}
 
-            {/* Resultado Sintético Real Basado Exclusivamente en lo Anotado */}
+            {/* Resultado Sintético Real */}
             {resultadoExperto && (
               <div className="bg-white border-2 border-indigo-500/40 p-6 rounded-2xl space-y-4 shadow-md">
                 <div className="flex justify-between items-center border-b pb-2">
                   <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <span>🎯</span> Síntesis Experta Basada en tus Notas
+                    <span>🎯</span> Síntesis Experta [{areaFinal}]
                   </h3>
                   <span className="text-xs bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-full font-semibold">Procesado</span>
                 </div>
 
-                {/* Resumen Corto Real */}
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
                   <h4 className="text-xs font-semibold text-slate-500 uppercase mb-1">Resumen Ejecutivo Directo</h4>
                   <p className="text-sm text-slate-800 font-medium">{resultadoExperto.resumen}</p>
                 </div>
 
-                {/* Ideas Extraídas */}
                 {resultadoExperto.puntosClave.length > 0 && (
                   <div>
                     <h4 className="text-xs font-semibold text-slate-500 uppercase">Ideas y Conceptos Extraídos</h4>
@@ -575,7 +638,6 @@ export default function BitacoraIA() {
                   </div>
                 )}
 
-                {/* Cifras / Datos Numéricos Detectados */}
                 {resultadoExperto.datosYMetricas && resultadoExperto.datosYMetricas.length > 0 && (
                   <div className="bg-amber-50 p-3 rounded-lg border border-amber-200">
                     <h4 className="text-xs font-semibold text-amber-900 uppercase mb-1">📊 Cifras y Datos Técnicos Detectados</h4>
@@ -585,7 +647,6 @@ export default function BitacoraIA() {
                   </div>
                 )}
 
-                {/* Acciones Extradas */}
                 {resultadoExperto.accionesSugeridas.length > 0 && (
                   <div>
                     <h4 className="text-xs font-semibold text-indigo-700 uppercase">✅ Acciones / Tareas Detectadas</h4>
@@ -605,34 +666,78 @@ export default function BitacoraIA() {
 
           </div>
 
-          {/* Historial */}
+          {/* Historial con Filtros de Fecha y Área */}
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4 sticky top-6">
               <div className="flex justify-between items-center border-b pb-2">
                 <h2 className="text-lg font-semibold text-slate-800">Historial Guardado</h2>
-                <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">{historial.length} registros</span>
+                <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">{historialFiltrado.length} registros</span>
               </div>
               
-              <div>
-                <input type="text" value={busquedaHistorial} onChange={(e) => setBusquedaHistorial(e.target.value)} placeholder="🔍 Buscar..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-slate-50 focus:bg-white" />
+              {/* Controles de Filtros */}
+              <div className="space-y-2">
+                <input 
+                  type="text" 
+                  value={busquedaHistorial} 
+                  onChange={(e) => setBusquedaHistorial(e.target.value)} 
+                  placeholder="🔍 Buscar por palabra clave..." 
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-slate-50 focus:bg-white" 
+                />
+
+                <div className="grid grid-cols-2 gap-2">
+                  <select 
+                    value={filtroArea} 
+                    onChange={(e) => setFiltroArea(e.target.value)}
+                    className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-slate-50"
+                  >
+                    <option value="TODOS">Todas las Áreas</option>
+                    <option value="IA & Tecnología">IA & Tecnología</option>
+                    <option value="Ciencias & Biotecnología">Ciencias & Biotecnología</option>
+                    <option value="Arquitectura & Urbanismo">Arquitectura & Urbanismo</option>
+                    <option value="Educación & EdTech">Educación & EdTech</option>
+                    <option value="Negocios & Innovación">Negocios & Innovación</option>
+                    <option value="Sustentabilidad & Reciclaje">Sustentabilidad</option>
+                  </select>
+
+                  <select 
+                    value={filtroTipo} 
+                    onChange={(e) => setFiltroTipo(e.target.value)}
+                    className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-slate-50"
+                  >
+                    <option value="TODOS">Todos los Tipos</option>
+                    <option value="Seminario">Seminario</option>
+                    <option value="Taller">Taller</option>
+                    <option value="Conferencia">Conferencia</option>
+                    <option value="Terreno">Terreno</option>
+                    <option value="Reunión">Reunión</option>
+                  </select>
+                </div>
               </div>
 
-              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+              <div className="space-y-3 max-h-[550px] overflow-y-auto pr-1">
                 {historialFiltrado.length === 0 ? (
-                  <p className="text-xs text-slate-400 text-center py-6">No hay registros guardados aún.</p>
+                  <p className="text-xs text-slate-400 text-center py-6">No se encontraron registros con los filtros seleccionados.</p>
                 ) : (
                   historialFiltrado.map((item) => (
                     <div key={item.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white transition space-y-2 relative group">
                       <button onClick={() => borrarEntrada(item.id)} className="absolute top-3 right-3 text-slate-300 hover:text-red-500 text-xs transition opacity-0 group-hover:opacity-100">🗑️</button>
-                      <div className="flex justify-between items-start pr-6">
+                      
+                      <div className="flex flex-wrap items-center gap-1 pr-6">
                         <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">{item.tipo}</span>
-                        <span className="text-[10px] text-slate-400">{item.fecha}</span>
+                        {item.area && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full">
+                            🏷️ {item.area}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-slate-400 ml-auto">📅 {item.fecha}</span>
                       </div>
+
                       <h3 className="text-sm font-bold text-slate-900">{item.titulo}</h3>
                       {item.organizacion && <p className="text-xs text-slate-600 font-medium">🏢 {item.organizacion}</p>}
                       <p className="text-xs text-slate-500">📍 {item.ubicacion}</p>
                       {item.estrellas > 0 && <div className="text-xs text-amber-400">{"★".repeat(item.estrellas)}{"☆".repeat(5 - item.estrellas)}</div>}
                       <div className="text-xs bg-white p-2 rounded border border-slate-100 text-slate-700">{item.resumen}</div>
+                      
                       {item.fotos && item.fotos.length > 0 && (
                         <div className="flex gap-1 overflow-x-auto pt-1">
                           {item.fotos.map((f, idx) => (
