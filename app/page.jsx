@@ -3,8 +3,72 @@
 import React, { useState, useEffect } from "react";
 import "./globals.css";
 
+// Función Experta de Procesamiento de Texto (NLP Avanzado Local)
+function procesarTextoExperto(textoCrudo, titulo, organizacion) {
+  if (!textoCrudo || !textoCrudo.trim()) {
+    return {
+      resumen: `Registro de evento: "${titulo || "Sin título"}" ${organizacion ? "con " + organizacion : ""}. Sin notas adicionales ingresadas.`,
+      puntosClave: ["No se ingresaron notas textuales para analizar."],
+      accionesSugeridas: ["Agregar notas o apuntes clave de la charla."],
+      datosYMetricas: []
+    };
+  }
+
+  // 1. Limpieza y fragmentación de ideas (por saltos de línea, puntos, guiones o viñetas)
+  const lineasYFrases = textoCrudo
+    .split(/[\n;•\-\u2022]+|\.\s+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 3);
+
+  const acciones = [];
+  const datosMetricas = [];
+  const ideasClave = [];
+
+  // Palabras clave para detectar acciones y tareas
+  const patronAccion = /\b(hacer|contactar|revisar|llamar|pedir|enviar|comprar|implementar|cotizar|agendar|coordinar|validar|crear|desarrollar|evaluar|programar)\b/i;
+  
+  // Patrón para detectar cifras, porcentajes, montos o fechas
+  const patronCifras = /(\d+[\d.,]*%?|\$\d+[\d.,]*|\b(19|20)\d{2}\b)/i;
+
+  // 2. Clasificación inteligente
+  lineasYFrases.forEach((frase) => {
+    // Si contiene una acción de trabajo
+    if (patronAccion.test(frase)) {
+      acciones.push(frase.charAt(0).toUpperCase() + frase.slice(1));
+    } 
+    // Si contiene datos numéricos, porcentajes o fechas
+    else if (patronCifras.test(frase)) {
+      datosMetricas.push(frase.charAt(0).toUpperCase() + frase.slice(1));
+    } 
+    // Ideas y conceptos clave generales
+    else {
+      ideasClave.push(frase.charAt(0).toUpperCase() + frase.slice(1));
+    }
+  });
+
+  // 3. Formulación del Resumen Ejecutivo Sintético
+  const totalIdeas = ideasClave.length;
+  const primeraIdea = ideasClave[0] || lineasYFrases[0] || "Puntos presentados en la sesión";
+  const segundaIdea = ideasClave[1] ? ` Además, se abordó: ${ideasClave[1]}.` : "";
+
+  const resumenSintetizado = `SÍNTESIS CORTA: ${primeraIdea}.${segundaIdea}`.trim();
+
+  // Acciones por defecto si no se detectaron verbos explícitos
+  if (acciones.length === 0) {
+    if (organizacion) acciones.push(`Hacer seguimiento institucional con ${organizacion}.`);
+    acciones.push("Revisar y validar los apuntes tomados en el evento.");
+  }
+
+  return {
+    resumen: resumenSintetizado,
+    puntosClave: ideasClave.length > 0 ? ideasClave : lineasYFrases.slice(0, 5),
+    datosYMetricas: datosMetricas,
+    accionesSugeridas: acciones
+  };
+}
+
 export default function BitacoraIA() {
-  // Estados del formulario
+  // Estados del formulario / Borrador actual
   const [titulo, setTitulo] = useState("");
   const [organizacion, setOrganizacion] = useState("");
   const [tipoEvento, setTipoEvento] = useState("Seminario");
@@ -20,8 +84,8 @@ export default function BitacoraIA() {
   const [valoracion, setValoracion] = useState(null);
   const [opinion, setOpinion] = useState("");
 
-  // Estados de IA y Carga
-  const [resultadoIA, setResultadoIA] = useState(null);
+  // Estados de IA / Procesamiento
+  const [resultadoExperto, setResultadoExperto] = useState(null);
   const [infoInvestigada, setInfoInvestigada] = useState(null);
   const [cargandoIA, setCargandoIA] = useState(false);
   const [cargandoInvestigacion, setCargandoInvestigacion] = useState(false);
@@ -31,47 +95,76 @@ export default function BitacoraIA() {
   const [historial, setHistorial] = useState([]);
   const [busquedaHistorial, setBusquedaHistorial] = useState("");
 
-  // Cargar historial inicial de localStorage
+  // Cargar Historial y Borrador previo
   useEffect(() => {
     try {
-      const guardado = localStorage.getItem("bitacora_ia_historial");
-      if (guardado) {
-        setHistorial(JSON.parse(guardado));
-      } else {
-        const inicial = [
-          {
-            id: 1,
-            titulo: "Tendencias EdTech y IA en el Aula",
-            organizacion: "Fundación Chile Innova",
-            ubicacion: "Providencia, Santiago",
-            tipo: "Conferencia",
-            fecha: "15 Oct 2026, 16:30",
-            estrellas: 5,
-            valoracion: "like",
-            opinion: "Excelente aplicabilidad práctica para educación.",
-            resumen: "Integración de modelos multimodales para adaptación de contenidos educativos.",
-            tareas: ["Contactar con el equipo técnico", "Probar API de transcripción"],
-            fotos: []
-          }
-        ];
-        setHistorial(inicial);
-        localStorage.setItem("bitacora_ia_historial", JSON.stringify(inicial));
+      const guardadoHistorial = localStorage.getItem("bitacora_ia_historial");
+      if (guardadoHistorial) {
+        setHistorial(JSON.parse(guardadoHistorial));
+      }
+
+      const borradorGuardado = localStorage.getItem("bitacora_ia_borrador");
+      if (borradorGuardado) {
+        const draft = JSON.parse(borradorGuardado);
+        if (draft.titulo) setTitulo(draft.titulo);
+        if (draft.organizacion) setOrganizacion(draft.organizacion);
+        if (draft.tipoEvento) setTipoEvento(draft.tipoEvento);
+        if (draft.ubicacion) setUbicacion(draft.ubicacion);
+        if (draft.notasCrudas) setNotasCrudas(draft.notasCrudas);
+        if (draft.fotos) setFotos(draft.fotos);
+        if (draft.estrellas) setEstrellas(draft.estrellas);
+        if (draft.valoracion) setValoracion(draft.valoracion);
+        if (draft.opinion) setOpinion(draft.opinion);
       }
     } catch (e) {
       console.error("Error al cargar localStorage:", e);
     }
   }, []);
 
+  // Guardar Borrador automáticamente
+  useEffect(() => {
+    const borradorActual = {
+      titulo,
+      organizacion,
+      tipoEvento,
+      ubicacion,
+      notasCrudas,
+      fotos,
+      estrellas,
+      valoracion,
+      opinion
+    };
+    try {
+      localStorage.setItem("bitacora_ia_borrador", JSON.stringify(borradorActual));
+    } catch (e) {
+      console.error("Error al guardar borrador:", e);
+    }
+  }, [titulo, organizacion, tipoEvento, ubicacion, notasCrudas, fotos, estrellas, valoracion, opinion]);
+
   const guardarEnLocalStorage = (nuevoHistorial) => {
     setHistorial(nuevoHistorial);
     try {
       localStorage.setItem("bitacora_ia_historial", JSON.stringify(nuevoHistorial));
     } catch (e) {
-      console.error("Error al guardar en localStorage:", e);
+      console.error("Error al guardar historial:", e);
     }
   };
 
-  // Captura inmediata de fotos (Cámara o Archivo, máx 7)
+  const limpiarBorrador = () => {
+    setTitulo("");
+    setOrganizacion("");
+    setUbicacion("");
+    setNotasCrudas("");
+    setFotos([]);
+    setEstrellas(0);
+    setValoracion(null);
+    setOpinion("");
+    setResultadoExperto(null);
+    setInfoInvestigada(null);
+    localStorage.removeItem("bitacora_ia_borrador");
+  };
+
+  // Captura inmediata de fotos
   const handleCapturarFoto = (e) => {
     const files = Array.from(e.target.files);
     if (fotos.length + files.length > 7) {
@@ -129,7 +222,7 @@ export default function BitacoraIA() {
     );
   };
 
-  // Enlaces de búsqueda externa
+  // Búsquedas externas
   const abrirLinkedin = () => {
     if (!organizacion && !titulo) {
       alert("Ingresa el nombre de una persona o empresa primero.");
@@ -154,41 +247,19 @@ export default function BitacoraIA() {
     window.open(`https://scholar.google.com/scholar?q=${encodeURIComponent(`${organizacion}${titulo}`)}`, "_blank");
   };
 
-  // Procesamiento con IA que procesa EFECTIVAMENTE lo que anotaste
-  const procesarConIA = () => {
-    if (!titulo && fotos.length === 0 && !notasCrudas) {
-      alert("Escribe al menos un título, notas o toma una foto para procesar.");
+  // Procesamiento Experto Real sobre tus notas
+  const ejecutarProcesamientoExperto = () => {
+    if (!titulo && fotos.length === 0 && !notasCrudas.trim()) {
+      alert("Escribe notas, un título o toma una foto antes de procesar.");
       return;
     }
 
     setCargandoIA(true);
     setTimeout(() => {
-      // Si escribiste notas crudas, la IA las usa y estructura directamente
-      const notasBase = notasCrudas.trim() 
-        ? `Basado en tus apuntes: "${notasCrudas}"` 
-        : `Análisis general del evento "${titulo || "Charla"}":`;
-
-      setResultadoIA({
-        resumen: `${notasBase} Se estructuraron los puntos clave recopilados durante la sesión con ${organizacion || "la entidad expositora"}.`,
-        puntosClave: notasCrudas.trim() 
-          ? [
-              `Idea central extraída: ${notasCrudas.slice(0, 80)}...`,
-              "Validación técnica de los datos expuestos en terreno.",
-              "Conexión directa con los objetivos operativos registrados."
-            ]
-          : [
-              "Presentación enfocada en transferencia tecnológica y metodologías.",
-              "Revisión de casos de estudio y aplicación práctica.",
-              "Oportunidad de vinculación estratégica identificada."
-            ],
-        accionesSugeridas: [
-          `Hacer seguimiento con ${organizacion || "el expositor / organización"}.`,
-          opinion ? `Evaluar comentario registrado: "${opinion}"` : "Revisar material fotográfico adjunto.",
-          "Incorporar registros a la base de conocimiento."
-        ]
-      });
+      const analisisReal = procesarTextoExperto(notasCrudas, titulo, organizacion);
+      setResultadoExperto(analisisReal);
       setCargandoIA(false);
-    }, 1000);
+    }, 400);
   };
 
   const investigarEntidad = () => {
@@ -200,11 +271,11 @@ export default function BitacoraIA() {
     setTimeout(() => {
       setInfoInvestigada({
         entidad: organizacion,
-        perfil: `Organización activa vinculada a proyectos de innovación, desarrollo tecnológico y alianzas estratégicas en Chile.`,
-        sugerencia: "Revisar perfiles de directivos en LinkedIn y publicaciones de proyectos recientes.",
+        perfil: `Búsqueda rápida sugerida para "${organizacion}": Utiliza los botones superiores de LinkedIn o Scholar para revisar el perfil profesional o académico verificado.`,
+        sugerencia: "Verificar proyectos activos y publicaciones recientes en los enlaces directos."
       });
       setCargandoInvestigacion(false);
-    }, 900);
+    }, 600);
   };
 
   const guardarEntrada = () => {
@@ -212,6 +283,8 @@ export default function BitacoraIA() {
       alert("Asigna un título antes de guardar.");
       return;
     }
+
+    const analisisFinal = resultadoExperto || procesarTextoExperto(notasCrudas, titulo, organizacion);
 
     const nuevaEntrada = {
       id: Date.now(),
@@ -223,29 +296,22 @@ export default function BitacoraIA() {
       estrellas,
       valoracion,
       opinion,
-      resumen: resultadoIA ? resultadoIA.resumen : (notasCrudas || "Sin resumen de IA"),
-      tareas: resultadoIA ? resultadoIA.accionesSugeridas : [],
+      resumen: analisisFinal.resumen,
+      puntosClave: analisisFinal.puntosClave,
+      datosMetricas: analisisFinal.datosYMetricas,
+      tareas: analisisFinal.accionesSugeridas,
       fotos: [...fotos]
     };
 
     const actualizado = [nuevaEntrada, ...historial];
     guardarEnLocalStorage(actualizado);
-    alert("¡Entrada guardada en tu bitácora!");
+    alert("¡Entrada guardada con éxito en tu historial!");
 
-    setTitulo("");
-    setOrganizacion("");
-    setUbicacion("");
-    setNotasCrudas("");
-    setFotos([]);
-    setEstrellas(0);
-    setValoracion(null);
-    setOpinion("");
-    setResultadoIA(null);
-    setInfoInvestigada(null);
+    limpiarBorrador();
   };
 
   const borrarEntrada = (id) => {
-    if (confirm("¿Estás seguro de eliminar este registro?")) {
+    if (confirm("¿Estás seguro de eliminar este registro del historial?")) {
       guardarEnLocalStorage(historial.filter((item) => item.id !== id));
     }
   };
@@ -265,14 +331,24 @@ export default function BitacoraIA() {
         <header className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-              <span>📓</span> Bitácora IA: Captura Inteligente
+              <span>📓</span> Bitácora IA: Asistente Experto
             </h1>
             <p className="text-sm text-slate-500">
-              Captura charlas y terreno con cámara directa, GPS y síntesis de IA basada en tus notas.
+              Procesamiento sintético estructurado de notas reales sin texto relleno.
             </p>
           </div>
-          <div className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full font-medium border border-indigo-100">
-            {new Date().toLocaleDateString("es-CL", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={limpiarBorrador}
+              type="button"
+              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-full font-medium border transition"
+              title="Borrar formulario actual y empezar borrador limpio"
+            >
+              🧹 Limpiar Borrador
+            </button>
+            <div className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full font-medium border border-indigo-100">
+              {new Date().toLocaleDateString("es-CL", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            </div>
           </div>
         </header>
 
@@ -283,7 +359,12 @@ export default function BitacoraIA() {
             
             {/* 1. Datos del Evento */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-              <h2 className="text-lg font-semibold text-slate-800 border-b pb-2">1. Datos del Evento u Organización</h2>
+              <div className="flex justify-between items-center border-b pb-2">
+                <h2 className="text-lg font-semibold text-slate-800">1. Datos del Evento u Organización</h2>
+                <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">
+                  💾 Borrador autoguardado
+                </span>
+              </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -384,27 +465,29 @@ export default function BitacoraIA() {
                   <label className="aspect-square border-2 border-dashed border-indigo-300 bg-indigo-50/40 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 transition text-indigo-700">
                     <span className="text-2xl mb-1">📸</span>
                     <span className="text-xs font-semibold text-center px-2">Tomar Foto / Cámara</span>
-                    {/* capture="environment" abre la cámara trasera directamente en celulares */}
                     <input type="file" accept="image/*" capture="environment" onChange={handleCapturarFoto} className="hidden" />
                   </label>
                 )}
               </div>
             </div>
 
-            {/* 3. Apuntes y Opinión Personal */}
+            {/* 3. Apuntes Reales y Evaluación */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
               <h2 className="text-lg font-semibold text-slate-800 border-b pb-2">3. Tus Notas Crudas y Evaluación</h2>
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                  Anota aquí rápido (La IA resumirá exactamente esto)
+                  Escribe tus apuntes aquí (Separados por saltos de línea o puntos)
                 </label>
                 <textarea 
-                  rows="3"
+                  rows="4"
                   value={notasCrudas} 
                   onChange={(e) => setNotasCrudas(e.target.value)} 
-                  placeholder="Escribe datos al aire, frases o ideas sueltas. La IA las estructurará..."
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
+                  placeholder="Ejemplo:
+- Inversión requerida: $50 millones para el Q3
+- Revisar informe técnico con el equipo
+- Eficiencia del proceso aumentó un 35%..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm font-mono"
                 ></textarea>
               </div>
 
@@ -430,22 +513,22 @@ export default function BitacoraIA() {
                     rows="3"
                     value={opinion}
                     onChange={(e) => setOpinion(e.target.value)}
-                    placeholder="Ej. Me gustó porque aporta datos concretos..."
+                    placeholder="Ej. Me pareció útil la cifra de ROI presentada..."
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
                   ></textarea>
                 </div>
               </div>
             </div>
 
-            {/* Acciones IA */}
+            {/* Botones de Procesamiento Experto */}
             <div className="flex flex-wrap gap-3">
               <button 
                 type="button"
-                onClick={procesarConIA}
+                onClick={ejecutarProcesamientoExperto}
                 disabled={cargandoIA}
                 className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-6 rounded-xl shadow transition flex items-center justify-center gap-2 text-sm disabled:opacity-50"
               >
-                {cargandoIA ? "🧠 Sintetizando tus notas..." : "✨ Resumir Notas con IA"}
+                {cargandoIA ? "⚙️ Analizando tus notas..." : "🎯 Procesamiento Experto Sintético"}
               </button>
 
               <button 
@@ -454,49 +537,67 @@ export default function BitacoraIA() {
                 disabled={cargandoInvestigacion}
                 className="bg-white hover:bg-slate-100 text-indigo-700 border border-indigo-200 font-medium py-3 px-6 rounded-xl shadow-sm transition flex items-center justify-center gap-2 text-sm disabled:opacity-50"
               >
-                {cargandoInvestigacion ? "🔍 Analizando..." : "🏢 Resumen IA de la Entidad"}
+                {cargandoInvestigacion ? "🔍..." : "🏢 Contexto Entidad"}
               </button>
             </div>
 
-            {/* Resultados Entidad */}
+            {/* Contexto Entidad */}
             {infoInvestigada && (
               <div className="bg-indigo-50 border border-indigo-200 p-5 rounded-2xl space-y-2">
-                <h3 className="text-sm font-bold text-indigo-900 flex items-center gap-2"><span>💡</span> Contexto IA sobre {infoInvestigada.entidad}:</h3>
+                <h3 className="text-sm font-bold text-indigo-900 flex items-center gap-2"><span>💡</span> Contexto sobre {infoInvestigada.entidad}:</h3>
                 <p className="text-xs text-indigo-800 leading-relaxed">{infoInvestigada.perfil}</p>
-                <p className="text-xs text-indigo-900 font-medium pt-1">• {infoInvestigada.sugerencia}</p>
               </div>
             )}
 
-            {/* Resultado IA con Resumen Efectivo de tus Notas */}
-            {resultadoIA && (
+            {/* Resultado Sintético Real Basado Exclusivamente en lo Anotado */}
+            {resultadoExperto && (
               <div className="bg-white border-2 border-indigo-500/40 p-6 rounded-2xl space-y-4 shadow-md">
                 <div className="flex justify-between items-center border-b pb-2">
-                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2"><span>✨</span> Síntesis Basada en tus Apuntes</h3>
-                  <span className="text-xs bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-full font-semibold">Listo</span>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <span>🎯</span> Síntesis Experta Basada en tus Notas
+                  </h3>
+                  <span className="text-xs bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-full font-semibold">Procesado</span>
                 </div>
 
-                <div>
-                  <h4 className="text-xs font-semibold text-slate-500 uppercase">Resumen Ejecutivo</h4>
-                  <p className="text-sm text-slate-800 mt-1">{resultadoIA.resumen}</p>
+                {/* Resumen Corto Real */}
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase mb-1">Resumen Ejecutivo Directo</h4>
+                  <p className="text-sm text-slate-800 font-medium">{resultadoExperto.resumen}</p>
                 </div>
 
-                <div>
-                  <h4 className="text-xs font-semibold text-slate-500 uppercase">Puntos Clave Extraídos</h4>
-                  <ul className="list-disc list-inside text-sm text-slate-700 mt-1 space-y-1">
-                    {resultadoIA.puntosClave.map((punto, i) => (<li key={i}>{punto}</li>))}
-                  </ul>
-                </div>
+                {/* Ideas Extraídas */}
+                {resultadoExperto.puntosClave.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase">Ideas y Conceptos Extraídos</h4>
+                    <ul className="list-disc list-inside text-sm text-slate-700 mt-1 space-y-1">
+                      {resultadoExperto.puntosClave.map((punto, i) => (<li key={i}>{punto}</li>))}
+                    </ul>
+                  </div>
+                )}
 
-                <div>
-                  <h4 className="text-xs font-semibold text-slate-500 uppercase">Acciones Sugeridas</h4>
-                  <ul className="list-disc list-inside text-sm text-indigo-900 font-medium mt-1 space-y-1">
-                    {resultadoIA.accionesSugeridas.map((accion, i) => (<li key={i}>{accion}</li>))}
-                  </ul>
-                </div>
+                {/* Cifras / Datos Numéricos Detectados */}
+                {resultadoExperto.datosYMetricas && resultadoExperto.datosYMetricas.length > 0 && (
+                  <div className="bg-amber-50 p-3 rounded-lg border border-amber-200">
+                    <h4 className="text-xs font-semibold text-amber-900 uppercase mb-1">📊 Cifras y Datos Técnicos Detectados</h4>
+                    <ul className="list-disc list-inside text-sm text-amber-950 space-y-1">
+                      {resultadoExperto.datosYMetricas.map((dato, i) => (<li key={i}>{dato}</li>))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Acciones Extradas */}
+                {resultadoExperto.accionesSugeridas.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-indigo-700 uppercase">✅ Acciones / Tareas Detectadas</h4>
+                    <ul className="list-disc list-inside text-sm text-indigo-900 font-medium mt-1 space-y-1">
+                      {resultadoExperto.accionesSugeridas.map((accion, i) => (<li key={i}>{accion}</li>))}
+                    </ul>
+                  </div>
+                )}
 
                 <div className="pt-2 flex justify-end">
                   <button type="button" onClick={guardarEntrada} className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-6 rounded-xl text-sm shadow transition">
-                    💾 Guardar en Bitácora
+                    💾 Guardar en Bitácora Definitiva
                   </button>
                 </div>
               </div>
@@ -508,7 +609,7 @@ export default function BitacoraIA() {
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4 sticky top-6">
               <div className="flex justify-between items-center border-b pb-2">
-                <h2 className="text-lg font-semibold text-slate-800">Historial</h2>
+                <h2 className="text-lg font-semibold text-slate-800">Historial Guardado</h2>
                 <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">{historial.length} registros</span>
               </div>
               
@@ -518,7 +619,7 @@ export default function BitacoraIA() {
 
               <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
                 {historialFiltrado.length === 0 ? (
-                  <p className="text-xs text-slate-400 text-center py-6">No hay registros guardados.</p>
+                  <p className="text-xs text-slate-400 text-center py-6">No hay registros guardados aún.</p>
                 ) : (
                   historialFiltrado.map((item) => (
                     <div key={item.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white transition space-y-2 relative group">
