@@ -88,6 +88,11 @@ export default function BitacoraIA() {
   const [filtroArea, setFiltroArea] = useState("TODOS");
   const [filtroTipo, setFiltroTipo] = useState("TODOS");
 
+  // Estados para expandir y editar ítems del historial
+  const [expandidos, setExpandidos] = useState({});
+  const [editandoId, setEditandoId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+
   // Cargar Historial y Borrador previo
   useEffect(() => {
     try {
@@ -290,7 +295,6 @@ export default function BitacoraIA() {
 
     const analisisFinal = resultadoExperto || procesarTextoExperto(notasCrudas, titulo, organizacion, areaFinal);
 
-    // Formatear fecha legible
     const fechaObj = new Date(fechaEvento);
     const fechaFormateada = isNaN(fechaObj.getTime())
       ? new Date().toLocaleString("es-CL")
@@ -308,6 +312,7 @@ export default function BitacoraIA() {
       estrellas,
       valoracion,
       opinion,
+      notasCrudas,
       resumen: analisisFinal.resumen,
       puntosClave: analisisFinal.puntosClave,
       datosMetricas: analisisFinal.datosYMetricas,
@@ -326,6 +331,44 @@ export default function BitacoraIA() {
     if (confirm("¿Estás seguro de eliminar este registro del historial?")) {
       guardarEnLocalStorage(historial.filter((item) => item.id !== id));
     }
+  };
+
+  // Funciones para expandir y editar historial
+  const toggleExpandir = (id) => {
+    setExpandidos((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const iniciarEdicion = (item) => {
+    setEditandoId(item.id);
+    setEditForm({ ...item });
+  };
+
+  const guardarEdicion = (id) => {
+    const actualizado = historial.map((item) => {
+      if (item.id === id) {
+        // Recalcular síntesis si cambiaron las notas crudas
+        const analisisActualizado = procesarTextoExperto(
+          editForm.notasCrudas || "",
+          editForm.titulo,
+          editForm.organizacion,
+          editForm.area
+        );
+
+        return {
+          ...editForm,
+          resumen: editForm.resumen || analisisActualizado.resumen,
+          puntosClave: analisisActualizado.puntosClave,
+          datosMetricas: analisisActualizado.datosYMetricas,
+          tareas: analisisActualizado.accionesSugeridas
+        };
+      }
+      return item;
+    });
+
+    guardarEnLocalStorage(actualizado);
+    setEditandoId(null);
+    setEditForm({});
+    alert("¡Registro actualizado correctamente!");
   };
 
   // Filtrado de Historial
@@ -352,7 +395,7 @@ export default function BitacoraIA() {
               <span>📓</span> Bitácora IA: Asistente Experto
             </h1>
             <p className="text-sm text-slate-500">
-              Captura charlas pasadas y presentes, clasifica por área temática y sintetiza tus apuntes.
+              Captura charlas pasadas y presentes, clasifica por área y edita o expande tus apuntes guardados.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -407,12 +450,10 @@ export default function BitacoraIA() {
                 </div>
               </div>
 
-              {/* Fecha y Categoría / Área de Conocimiento */}
+              {/* Fecha y Categoría */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                    📅 Fecha y Hora del Evento
-                  </label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">📅 Fecha y Hora</label>
                   <input 
                     type="datetime-local" 
                     value={fechaEvento}
@@ -422,9 +463,7 @@ export default function BitacoraIA() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                    🏷️ Área de Conocimiento
-                  </label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">🏷️ Área de Conocimiento</label>
                   <select 
                     value={areaTematica} 
                     onChange={(e) => setAreaTematica(e.target.value)}
@@ -464,13 +503,13 @@ export default function BitacoraIA() {
                     type="text"
                     value={areaPersonalizada}
                     onChange={(e) => setAreaPersonalizada(e.target.value)}
-                    placeholder="Ej. Neurociencia, Gastronomía, Minería..."
+                    placeholder="Ej. Neurociencia, Minería..."
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
                   />
                 </div>
               )}
 
-              {/* Botones de búsqueda externa */}
+              {/* Botones de búsqueda */}
               <div className="pt-1 flex flex-wrap gap-2 items-center">
                 <span className="text-xs font-semibold text-slate-400 uppercase mr-1">Buscar Perfil En:</span>
                 <button type="button" onClick={abrirLinkedin} className="px-3 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-medium rounded-lg border border-sky-200 transition">💼 LinkedIn</button>
@@ -666,7 +705,7 @@ export default function BitacoraIA() {
 
           </div>
 
-          {/* Historial con Filtros de Fecha y Área */}
+          {/* Historial con Expandir y Edición Directa */}
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4 sticky top-6">
               <div className="flex justify-between items-center border-b pb-2">
@@ -714,39 +753,182 @@ export default function BitacoraIA() {
                 </div>
               </div>
 
-              <div className="space-y-3 max-h-[550px] overflow-y-auto pr-1">
+              {/* Lista de Tarjetas del Historial */}
+              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
                 {historialFiltrado.length === 0 ? (
                   <p className="text-xs text-slate-400 text-center py-6">No se encontraron registros con los filtros seleccionados.</p>
                 ) : (
-                  historialFiltrado.map((item) => (
-                    <div key={item.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white transition space-y-2 relative group">
-                      <button onClick={() => borrarEntrada(item.id)} className="absolute top-3 right-3 text-slate-300 hover:text-red-500 text-xs transition opacity-0 group-hover:opacity-100">🗑️</button>
-                      
-                      <div className="flex flex-wrap items-center gap-1 pr-6">
-                        <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">{item.tipo}</span>
-                        {item.area && (
-                          <span className="text-[10px] font-semibold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full">
-                            🏷️ {item.area}
-                          </span>
-                        )}
-                        <span className="text-[10px] text-slate-400 ml-auto">📅 {item.fecha}</span>
-                      </div>
+                  historialFiltrado.map((item) => {
+                    const estaExpandido = !!expandidos[item.id];
+                    const estaEditando = editandoId === item.id;
 
-                      <h3 className="text-sm font-bold text-slate-900">{item.titulo}</h3>
-                      {item.organizacion && <p className="text-xs text-slate-600 font-medium">🏢 {item.organizacion}</p>}
-                      <p className="text-xs text-slate-500">📍 {item.ubicacion}</p>
-                      {item.estrellas > 0 && <div className="text-xs text-amber-400">{"★".repeat(item.estrellas)}{"☆".repeat(5 - item.estrellas)}</div>}
-                      <div className="text-xs bg-white p-2 rounded border border-slate-100 text-slate-700">{item.resumen}</div>
-                      
-                      {item.fotos && item.fotos.length > 0 && (
-                        <div className="flex gap-1 overflow-x-auto pt-1">
-                          {item.fotos.map((f, idx) => (
-                            <img key={idx} src={f} alt="thumb" onClick={() => setFotoModal(f)} className="w-8 h-8 object-cover rounded cursor-pointer border border-slate-200 hover:opacity-80" />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))
+                    return (
+                      <div key={item.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white transition space-y-3 relative group shadow-2xs">
+                        
+                        {/* Botón Borrar */}
+                        <button onClick={() => borrarEntrada(item.id)} className="absolute top-3 right-3 text-slate-300 hover:text-red-500 text-xs transition">🗑️</button>
+
+                        {!estaEditando ? (
+                          <>
+                            {/* Cabecera Tarjeta */}
+                            <div className="flex flex-wrap items-center gap-1 pr-6">
+                              <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">{item.tipo}</span>
+                              {item.area && (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full">
+                                  🏷️ {item.area}
+                                </span>
+                              )}
+                              <span className="text-[10px] text-slate-400 ml-auto">📅 {item.fecha}</span>
+                            </div>
+
+                            <h3 className="text-sm font-bold text-slate-900">{item.titulo}</h3>
+                            {item.organizacion && <p className="text-xs text-slate-600 font-medium">🏢 {item.organizacion}</p>}
+                            <p className="text-xs text-slate-500">📍 {item.ubicacion}</p>
+
+                            {/* Resumen Vista Previa */}
+                            <div className="text-xs bg-white p-2.5 rounded-lg border border-slate-200 text-slate-800 font-medium">
+                              {item.resumen}
+                            </div>
+
+                            {/* Fotos miniaturas */}
+                            {item.fotos && item.fotos.length > 0 && (
+                              <div className="flex gap-1 overflow-x-auto pt-1">
+                                {item.fotos.map((f, idx) => (
+                                  <img key={idx} src={f} alt="thumb" onClick={() => setFotoModal(f)} className="w-8 h-8 object-cover rounded cursor-pointer border border-slate-200 hover:opacity-80" />
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Detalle Expandido */}
+                            {estaExpandido && (
+                              <div className="pt-2 border-t border-slate-200 space-y-3 text-xs bg-slate-100/70 p-3 rounded-lg mt-2">
+                                {item.notasCrudas && (
+                                  <div>
+                                    <span className="font-bold text-slate-600 uppercase text-[10px]">Apuntes Crudos Originales:</span>
+                                    <p className="font-mono text-slate-700 whitespace-pre-wrap mt-0.5">{item.notasCrudas}</p>
+                                  </div>
+                                )}
+
+                                {item.puntosClave && item.puntosClave.length > 0 && (
+                                  <div>
+                                    <span className="font-bold text-slate-600 uppercase text-[10px]">Ideas Principales Extraídas:</span>
+                                    <ul className="list-disc list-inside text-slate-700 mt-0.5 space-y-0.5">
+                                      {item.puntosClave.map((p, i) => <li key={i}>{p}</li>)}
+                                    </ul>
+                                  </div>
+                                )}
+
+                                {item.datosMetricas && item.datosMetricas.length > 0 && (
+                                  <div>
+                                    <span className="font-bold text-amber-800 uppercase text-[10px]">📊 Cifras y Datos Técnicos:</span>
+                                    <ul className="list-disc list-inside text-amber-950 mt-0.5 space-y-0.5">
+                                      {item.datosMetricas.map((d, i) => <li key={i}>{d}</li>)}
+                                    </ul>
+                                  </div>
+                                )}
+
+                                {item.opinion && (
+                                  <div>
+                                    <span className="font-bold text-slate-600 uppercase text-[10px]">Comentario / Opinión:</span>
+                                    <p className="text-slate-700 italic mt-0.5">"{item.opinion}"</p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Botones de Acción Tarjeta */}
+                            <div className="flex justify-between items-center pt-1 text-xs">
+                              <button 
+                                onClick={() => toggleExpandir(item.id)}
+                                className="text-indigo-600 hover:text-indigo-800 font-semibold text-[11px] flex items-center gap-1"
+                              >
+                                {estaExpandido ? "▲ Ocultar Detalle" : "📖 Ver todo y notas"}
+                              </button>
+
+                              <button 
+                                onClick={() => iniciarEdicion(item)}
+                                className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-2.5 py-1 rounded-md text-[11px] font-medium transition"
+                              >
+                                ✏️ Editar
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          /* Formulario de Edición Directa */
+                          <div className="space-y-3 pt-1">
+                            <span className="text-xs font-bold text-indigo-700 block border-b pb-1">✏️ Editando Registro</span>
+                            
+                            <div>
+                              <label className="text-[10px] uppercase font-bold text-slate-500">Título</label>
+                              <input 
+                                type="text" 
+                                value={editForm.titulo || ""} 
+                                onChange={(e) => setEditForm({ ...editForm, titulo: e.target.value })}
+                                className="w-full text-xs p-1.5 border rounded bg-white"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[10px] uppercase font-bold text-slate-500">Organización</label>
+                                <input 
+                                  type="text" 
+                                  value={editForm.organizacion || ""} 
+                                  onChange={(e) => setEditForm({ ...editForm, organizacion: e.target.value })}
+                                  className="w-full text-xs p-1.5 border rounded bg-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] uppercase font-bold text-slate-500">Ubicación</label>
+                                <input 
+                                  type="text" 
+                                  value={editForm.ubicacion || ""} 
+                                  onChange={(e) => setEditForm({ ...editForm, ubicacion: e.target.value })}
+                                  className="w-full text-xs p-1.5 border rounded bg-white"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] uppercase font-bold text-slate-500">Editar Apuntes Crudos</label>
+                              <textarea 
+                                rows="3"
+                                value={editForm.notasCrudas || ""} 
+                                onChange={(e) => setEditForm({ ...editForm, notasCrudas: e.target.value })}
+                                className="w-full text-xs p-1.5 border rounded bg-white font-mono"
+                              ></textarea>
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] uppercase font-bold text-slate-500">Editar Síntesis Corta</label>
+                              <textarea 
+                                rows="2"
+                                value={editForm.resumen || ""} 
+                                onChange={(e) => setEditForm({ ...editForm, resumen: e.target.value })}
+                                className="w-full text-xs p-1.5 border rounded bg-white font-medium"
+                              ></textarea>
+                            </div>
+
+                            <div className="flex justify-end gap-2 pt-2">
+                              <button 
+                                onClick={() => setEditandoId(null)}
+                                className="px-3 py-1 bg-slate-200 text-slate-700 text-xs rounded-lg font-medium"
+                              >
+                                Cancelar
+                              </button>
+                              <button 
+                                onClick={() => guardarEdicion(item.id)}
+                                className="px-3 py-1 bg-emerald-600 text-white text-xs rounded-lg font-medium shadow hover:bg-emerald-700"
+                              >
+                                💾 Guardar Cambios
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
