@@ -28,7 +28,7 @@ const comprimirImagen = (base64Str, maxWidth = 800, quality = 0.7) => {
   });
 };
 
-// NLP Local de Asistente Experto
+// NLP Local de Asistente Experto (Corregido)
 function sintetizarTextoAlgoritmico(textoOriginal, area) {
   if (!textoOriginal || !textoOriginal.trim()) {
     return {
@@ -45,7 +45,7 @@ function sintetizarTextoAlgoritmico(textoOriginal, area) {
   ]);
 
   const oraciones = textoOriginal
-    .split(/[\n.]+/|\b(?=[A-Z][a-z])/)
+    .split(/[\n.]+|\b(?=[A-Z][a-z])/)
     .map((s) => s.trim())
     .filter((s) => s.length > 5);
 
@@ -319,7 +319,6 @@ export default function BitacoraIA() {
       reader.onloadend = async () => {
         const imagenComprimida = await comprimirImagen(reader.result, 800, 0.7);
         setFotos((prev) => [...prev, imagenComprimida].slice(0, 7));
-        // Ejecutar OCR en segundo plano sobre la foto cargada
         reconocerTextoFoto(imagenComprimida);
       };
       reader.readAsDataURL(file);
@@ -850,11 +849,4 @@ export default function BitacoraIA() {
       {fotoModal && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setFotoModal(null)}>
           <div className="relative max-w-4xl max-h-[90vh]">
-            <img src={fotoModal} alt="Ampliación" className="max-w-full max-h-[90vh] rounded-lg shadow-2xl" />
-            <button onClick={() => setFotoModal(null)} className="absolute -top-4 -right-4 bg-white text-slate-900 rounded-full w-8 h-8 flex items-center justify-center font-bold shadow">✕</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+            <img src={fotoModal} alt="Ampliación"
