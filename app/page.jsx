@@ -28,7 +28,7 @@ const comprimirImagen = (base64Str, maxWidth = 800, quality = 0.7) => {
   });
 };
 
-// NLP Local de Asistente Experto (Corregido)
+// NLP Local de Asistente Experto
 function sintetizarTextoAlgoritmico(textoOriginal, area) {
   if (!textoOriginal || !textoOriginal.trim()) {
     return {
@@ -130,9 +130,7 @@ export default function BitacoraIA() {
   const [opinion, setOpinion] = useState("");
 
   const [resultadoExperto, setResultadoExperto] = useState(null);
-  const [infoInvestigada, setInfoInvestigada] = useState(null);
   const [cargandoIA, setCargandoIA] = useState(false);
-  const [cargandoInvestigacion, setCargandoInvestigacion] = useState(false);
   const [cargandoGPS, setCargandoGPS] = useState(false);
 
   const [historial, setHistorial] = useState([]);
@@ -231,7 +229,7 @@ export default function BitacoraIA() {
     guardarEnBD("historial", nuevoHistorial);
   };
 
-  // Función OCR local con Tesseract.js
+  // OCR local con Tesseract.js
   const reconocerTextoFoto = async (imageSrc) => {
     setLeyendoOCR(true);
     try {
@@ -250,7 +248,7 @@ export default function BitacoraIA() {
     }
   };
 
-  // Funciones de Respaldo y Restauración JSON
+  // Respaldo y Restauración JSON
   const exportarRespaldoJSON = () => {
     const datosRespaldo = {
       version: 1,
@@ -274,7 +272,7 @@ export default function BitacoraIA() {
         try {
           const parsedData = JSON.parse(event.target.result);
           if (parsedData && Array.isArray(parsedData.historial)) {
-            if (confirm(`Se encontraron ${parsedData.historial.length} registros en el respaldo. ¿Deseas importarlos?`)) {
+            if (confirm(`Se encontraron ${parsedData.historial.length} registros. ¿Deseas importarlos?`)) {
               const fusionados = [...parsedData.historial, ...historial];
               const unicos = Array.from(new Map(fusionados.map(item => [item.id, item])).values());
               actualizarHistorialBD(unicos);
@@ -303,7 +301,6 @@ export default function BitacoraIA() {
     setValoracion(null);
     setOpinion("");
     setResultadoExperto(null);
-    setInfoInvestigada(null);
     guardarEnBD("borrador", null);
   };
 
@@ -633,7 +630,7 @@ export default function BitacoraIA() {
                   Ingresa o complementa tus notas (El OCR agregará texto de fotos aquí)
                 </label>
                 <textarea 
-                  rows="5"
+                  rows={5} 
                   value={notasCrudas} 
                   onChange={(e) => setNotasCrudas(e.target.value)} 
                   placeholder="Escribe tus apuntes o toma una foto para extraer texto automáticamente..."
@@ -659,7 +656,7 @@ export default function BitacoraIA() {
 
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Comentario Personal</label>
-                  <textarea rows="3" value={opinion} onChange={(e) => setOpinion(e.target.value)} placeholder="Comentario personal..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></textarea>
+                  <textarea rows={3} value={opinion} onChange={(e) => setOpinion(e.target.value)} placeholder="Comentario personal..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></textarea>
                 </div>
               </div>
             </div>
@@ -825,7 +822,7 @@ export default function BitacoraIA() {
                             </div>
                             <div>
                               <label className="text-[10px] uppercase font-bold text-slate-500">Notas</label>
-                              <textarea rows="3" value={editForm.notasCrudas || ""} onChange={(e) => setEditForm({ ...editForm, notasCrudas: e.target.value })} className="w-full text-xs p-1.5 border rounded bg-white font-mono"></textarea>
+                              <textarea rows={3} value={editForm.notasCrudas || ""} onChange={(e) => setEditForm({ ...editForm, notasCrudas: e.target.value })} className="w-full text-xs p-1.5 border rounded bg-white font-mono"></textarea>
                             </div>
                             <div className="flex justify-end gap-2 pt-2">
                               <button onClick={() => setEditandoId(null)} className="px-3 py-1 bg-slate-200 text-slate-700 text-xs rounded-lg">Cancelar</button>
@@ -849,4 +846,11 @@ export default function BitacoraIA() {
       {fotoModal && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setFotoModal(null)}>
           <div className="relative max-w-4xl max-h-[90vh]">
-            <img src={fotoModal} alt="Ampliación"
+            <img src={fotoModal} alt="Ampliación" className="max-w-full max-h-[90vh] rounded-lg shadow-2xl" />
+            <button onClick={() => setFotoModal(null)} className="absolute -top-4 -right-4 bg-white text-slate-900 rounded-full w-8 h-8 flex items-center justify-center font-bold shadow">✕</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
