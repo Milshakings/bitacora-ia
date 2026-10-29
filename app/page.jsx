@@ -1,62 +1,117 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "./globals.css";
+import { createWorker } from 'tesseract.js';
 
-// Función Experta de Procesamiento de Texto (NLP Avanzado Local)
-function procesarTextoExperto(textoCrudo, titulo, organizacion, area) {
-  if (!textoCrudo || !textoCrudo.trim()) {
+// Compresión de imágenes para optimizar espacio en IndexedDB
+const comprimirImagen = (base64Str, maxWidth = 800, quality = 0.7) => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = base64Str;
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let width = img.width;
+      let height = img.height;
+
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+  });
+};
+
+// NLP Local de Asistente Experto
+function sintetizarTextoAlgoritmico(textoOriginal, area) {
+  if (!textoOriginal || !textoOriginal.trim()) {
     return {
-      resumen: `Registro de evento [${area || "General"}]: "${titulo || "Sin título"}" ${organizacion ? "con " + organizacion : ""}. Sin notas adicionales ingresadas.`,
+      resumen: `Registro de evento [${area || "General"}]: Sin notas adicionales.`,
       puntosClave: ["No se ingresaron notas textuales para analizar."],
-      accionesSugeridas: ["Agregar notas o apuntes clave de la charla."],
-      datosYMetricas: []
+      datosYMetricas: [],
+      accionesSugeridas: ["Agregar notas o apuntes clave de la charla."]
     };
   }
 
-  // Limpieza y fragmentación por saltos de línea, puntos, guiones o viñetas
-  const lineasYFrases = textoCrudo
-    .split(/[\n;•\-\u2022]+|\.\s+/)
-    .map((item) => item.trim())
-    .filter((item) => item.length > 3);
+  const stopwords = new Set([
+    "de", "la", "que", "el", "en", "y", "a", "los", "del", "se", "las", "por", "un", "para", "con", "no", "una",
+    "su", "al", "lo", "como", "más", "pero", "sus", "le", "ya", "o", "este", "sí", "porque", "esta", "entre"
+  ]);
 
-  const acciones = [];
-  const datosMetricas = [];
-  const ideasClave = [];
+  const oraciones = textoOriginal
+    .split(/[\n.]+/|\b(?=[A-Z][a-z])/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 5);
+
+  if (oraciones.length === 0) {
+    return {
+      resumen: textoOriginal.slice(0, 100) + "...",
+      puntosClave: [textoOriginal],
+      datosYMetricas: [],
+      accionesSugeridas: []
+    };
+  }
+
+  const palabras = textoOriginal.toLowerCase().match(/\b[a-záéíóúñ]{3,}\b/g) || [];
+  const frecuencia = {};
+  
+  palabras.forEach((word) => {
+    if (!stopwords.has(word)) {
+      frecuencia[word] = (frecuencia[word] || 0) + 1;
+    }
+  });
+
+  const oracionesPuntuadas = oraciones.map((oracion) => {
+    const palabrasOracion = oracion.toLowerCase().match(/\b[a-záéíóúñ]{3,}\b/g) || [];
+    let puntaje = 0;
+    palabrasOracion.forEach((w) => {
+      if (frecuencia[w]) puntaje += frecuencia[w];
+    });
+    const puntajeNormalizado = palabrasOracion.length > 0 ? puntaje / palabrasOracion.length : 0;
+    return { texto: oracion, puntaje: puntajeNormalizado };
+  });
+
+  oracionesPuntuadas.sort((a, b) => b.puntaje - a.puntaje);
 
   const patronAccion = /\b(hacer|contactar|revisar|llamar|pedir|enviar|comprar|implementar|cotizar|agendar|coordinar|validar|crear|desarrollar|evaluar|programar)\b/i;
   const patronCifras = /(\d+[\d.,]*%?|\$\d+[\d.,]*|\b(19|20)\d{2}\b)/i;
 
-  lineasYFrases.forEach((frase) => {
-    if (patronAccion.test(frase)) {
-      acciones.push(frase.charAt(0).toUpperCase() + frase.slice(1));
-    } else if (patronCifras.test(frase)) {
-      datosMetricas.push(frase.charAt(0).toUpperCase() + frase.slice(1));
+  const acciones = [];
+  const datosMetricas = [];
+  const conceptosLimpios = [];
+
+  oraciones.forEach((oracion) => {
+    if (patronAccion.test(oracion)) {
+      acciones.push(oracion);
+    } else if (patronCifras.test(oracion)) {
+      datosMetricas.push(oracion);
     } else {
-      ideasClave.push(frase.charAt(0).toUpperCase() + frase.slice(1));
+      conceptosLimpios.push(oracion);
     }
   });
 
-  const primeraIdea = ideasClave[0] || lineasYFrases[0] || "Puntos presentados en la sesión";
-  const segundaIdea = ideasClave[1] ? ` Además, se abordó: ${ideasClave[1]}.` : "";
+  const mejorOracion = oracionesPuntuadas[0]?.texto || oraciones[0];
+  const segundaMejor = oracionesPuntuadas[1]?.texto && oracionesPuntuadas[1].texto !== mejorOracion
+    ? " " + oracionesPuntuadas[1].texto
+    : "";
 
-  const resumenSintetizado = `SÍNTESIS CORTA [${area}]: ${primeraIdea}.${segundaIdea}`.trim();
-
-  if (acciones.length === 0) {
-    if (organizacion) acciones.push(`Hacer seguimiento institucional con ${organizacion}.`);
-    acciones.push("Revisar y validar los apuntes tomados en el evento.");
-  }
+  const resumenCondensado = `[SÍNTESIS SINTÉTICA ${area.toUpperCase()}]: ${mejorOracion}.${segundaMejor}`;
 
   return {
-    resumen: resumenSintetizado,
-    puntosClave: ideasClave.length > 0 ? ideasClave : lineasYFrases.slice(0, 5),
+    resumen: resumenCondensado,
+    puntosClave: conceptosLimpios.slice(0, 4),
     datosYMetricas: datosMetricas,
-    accionesSugeridas: acciones
+    accionesSugeridas: acciones.length > 0 ? acciones : ["Revisar seguimiento de los temas abordados."]
   };
 }
 
 export default function BitacoraIA() {
-  // Estados del formulario / Borrador actual
   const [titulo, setTitulo] = useState("");
   const [organizacion, setOrganizacion] = useState("");
   const [tipoEvento, setTipoEvento] = useState("Seminario");
@@ -66,63 +121,93 @@ export default function BitacoraIA() {
   const [ubicacion, setUbicacion] = useState("");
   const [notasCrudas, setNotasCrudas] = useState("");
 
-  // Fotos (Hasta 7)
   const [fotos, setFotos] = useState([]);
   const [fotoModal, setFotoModal] = useState(null);
+  const [leyendoOCR, setLeyendoOCR] = useState(false);
 
-  // Valoración y Opinión
   const [estrellas, setEstrellas] = useState(0);
   const [valoracion, setValoracion] = useState(null);
   const [opinion, setOpinion] = useState("");
 
-  // Estados de IA / Procesamiento
   const [resultadoExperto, setResultadoExperto] = useState(null);
   const [infoInvestigada, setInfoInvestigada] = useState(null);
   const [cargandoIA, setCargandoIA] = useState(false);
   const [cargandoInvestigacion, setCargandoInvestigacion] = useState(false);
   const [cargandoGPS, setCargandoGPS] = useState(false);
 
-  // Historial con persistencia en localStorage
   const [historial, setHistorial] = useState([]);
   const [busquedaHistorial, setBusquedaHistorial] = useState("");
   const [filtroArea, setFiltroArea] = useState("TODOS");
   const [filtroTipo, setFiltroTipo] = useState("TODOS");
 
-  // Estados para expandir y editar ítems del historial
   const [expandidos, setExpandidos] = useState({});
   const [editandoId, setEditandoId] = useState(null);
   const [editForm, setEditForm] = useState({});
 
-  // Cargar Historial y Borrador previo
-  useEffect(() => {
-    try {
-      const guardadoHistorial = localStorage.getItem("bitacora_ia_historial");
-      if (guardadoHistorial) {
-        setHistorial(JSON.parse(guardadoHistorial));
-      }
+  const fileInputRestaurarRef = useRef(null);
 
-      const borradorGuardado = localStorage.getItem("bitacora_ia_borrador");
-      if (borradorGuardado) {
-        const draft = JSON.parse(borradorGuardado);
-        if (draft.titulo) setTitulo(draft.titulo);
-        if (draft.organizacion) setOrganizacion(draft.organizacion);
-        if (draft.tipoEvento) setTipoEvento(draft.tipoEvento);
-        if (draft.areaTematica) setAreaTematica(draft.areaTematica);
-        if (draft.areaPersonalizada) setAreaPersonalizada(draft.areaPersonalizada);
-        if (draft.fechaEvento) setFechaEvento(draft.fechaEvento);
-        if (draft.ubicacion) setUbicacion(draft.ubicacion);
-        if (draft.notasCrudas) setNotasCrudas(draft.notasCrudas);
-        if (draft.fotos) setFotos(draft.fotos);
-        if (draft.estrellas) setEstrellas(draft.estrellas);
-        if (draft.valoracion) setValoracion(draft.valoracion);
-        if (draft.opinion) setOpinion(draft.opinion);
+  // Cargar datos de IndexedDB
+  useEffect(() => {
+    async function cargarDatosBD() {
+      try {
+        const dbReq = indexedDB.open("BitacoraIADB", 1);
+        dbReq.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains("almacen")) {
+            db.createObjectStore("almacen");
+          }
+        };
+
+        dbReq.onsuccess = (e) => {
+          const db = e.target.result;
+          const transaction = db.transaction(["almacen"], "readonly");
+          const store = transaction.objectStore("almacen");
+
+          const reqHistorial = store.get("historial");
+          reqHistorial.onsuccess = () => {
+            if (reqHistorial.result) setHistorial(reqHistorial.result);
+          };
+
+          const reqBorrador = store.get("borrador");
+          reqBorrador.onsuccess = () => {
+            const draft = reqBorrador.result;
+            if (draft) {
+              if (draft.titulo) setTitulo(draft.titulo);
+              if (draft.organizacion) setOrganizacion(draft.organizacion);
+              if (draft.tipoEvento) setTipoEvento(draft.tipoEvento);
+              if (draft.areaTematica) setAreaTematica(draft.areaTematica);
+              if (draft.areaPersonalizada) setAreaPersonalizada(draft.areaPersonalizada);
+              if (draft.fechaEvento) setFechaEvento(draft.fechaEvento);
+              if (draft.ubicacion) setUbicacion(draft.ubicacion);
+              if (draft.notasCrudas) setNotasCrudas(draft.notasCrudas);
+              if (draft.fotos) setFotos(draft.fotos);
+              if (draft.estrellas) setEstrellas(draft.estrellas);
+              if (draft.valoracion) setValoracion(draft.valoracion);
+              if (draft.opinion) setOpinion(draft.opinion);
+            }
+          };
+        };
+      } catch (err) {
+        console.error("Error IndexedDB:", err);
       }
-    } catch (e) {
-      console.error("Error al cargar localStorage:", e);
     }
+    cargarDatosBD();
   }, []);
 
-  // Guardar Borrador automáticamente
+  const guardarEnBD = (clave, valor) => {
+    try {
+      const dbReq = indexedDB.open("BitacoraIADB", 1);
+      dbReq.onsuccess = (e) => {
+        const db = e.target.result;
+        const transaction = db.transaction(["almacen"], "readwrite");
+        const store = transaction.objectStore("almacen");
+        store.put(valor, clave);
+      };
+    } catch (err) {
+      console.error("Error al guardar:", err);
+    }
+  };
+
   useEffect(() => {
     const borradorActual = {
       titulo,
@@ -138,19 +223,70 @@ export default function BitacoraIA() {
       valoracion,
       opinion
     };
-    try {
-      localStorage.setItem("bitacora_ia_borrador", JSON.stringify(borradorActual));
-    } catch (e) {
-      console.error("Error al guardar borrador:", e);
-    }
+    guardarEnBD("borrador", borradorActual);
   }, [titulo, organizacion, tipoEvento, areaTematica, areaPersonalizada, fechaEvento, ubicacion, notasCrudas, fotos, estrellas, valoracion, opinion]);
 
-  const guardarEnLocalStorage = (nuevoHistorial) => {
+  const actualizarHistorialBD = (nuevoHistorial) => {
     setHistorial(nuevoHistorial);
+    guardarEnBD("historial", nuevoHistorial);
+  };
+
+  // Función OCR local con Tesseract.js
+  const reconocerTextoFoto = async (imageSrc) => {
+    setLeyendoOCR(true);
     try {
-      localStorage.setItem("bitacora_ia_historial", JSON.stringify(nuevoHistorial));
-    } catch (e) {
-      console.error("Error al guardar historial:", e);
+      const worker = await createWorker('spa');
+      const ret = await worker.recognize(imageSrc);
+      const textoDetectado = ret.data.text;
+      await worker.terminate();
+
+      if (textoDetectado && textoDetectado.trim().length > 3) {
+        setNotasCrudas((prev) => prev + "\n[OCR Imagen]: " + textoDetectado.trim());
+      }
+    } catch (err) {
+      console.error("Error en OCR:", err);
+    } finally {
+      setLeyendoOCR(false);
+    }
+  };
+
+  // Funciones de Respaldo y Restauración JSON
+  const exportarRespaldoJSON = () => {
+    const datosRespaldo = {
+      version: 1,
+      fechaRespaldo: new Date().toISOString(),
+      historial: historial
+    };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(datosRespaldo, null, 2));
+    const downloadAnchor = document.createElement("a");
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `respaldo_bitacora_${new Date().toISOString().slice(0, 10)}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  const importarRespaldoJSON = (e) => {
+    const fileReader = new FileReader();
+    if (e.target.files && e.target.files[0]) {
+      fileReader.readAsText(e.target.files[0], "UTF-8");
+      fileReader.onload = (event) => {
+        try {
+          const parsedData = JSON.parse(event.target.result);
+          if (parsedData && Array.isArray(parsedData.historial)) {
+            if (confirm(`Se encontraron ${parsedData.historial.length} registros en el respaldo. ¿Deseas importarlos?`)) {
+              const fusionados = [...parsedData.historial, ...historial];
+              const unicos = Array.from(new Map(fusionados.map(item => [item.id, item])).values());
+              actualizarHistorialBD(unicos);
+              alert("¡Respaldo importado con éxito!");
+            }
+          } else {
+            alert("Formato de respaldo inválido.");
+          }
+        } catch (error) {
+          alert("Error al leer archivo JSON.");
+        }
+      };
     }
   };
 
@@ -168,11 +304,10 @@ export default function BitacoraIA() {
     setOpinion("");
     setResultadoExperto(null);
     setInfoInvestigada(null);
-    localStorage.removeItem("bitacora_ia_borrador");
+    guardarEnBD("borrador", null);
   };
 
-  // Captura de fotos
-  const handleCapturarFoto = (e) => {
+  const handleProcesarArchivos = (e) => {
     const files = Array.from(e.target.files);
     if (fotos.length + files.length > 7) {
       alert("Solo puedes adjuntar un máximo de 7 fotos por sesión.");
@@ -181,8 +316,11 @@ export default function BitacoraIA() {
 
     files.forEach((file) => {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setFotos((prev) => [...prev, reader.result].slice(0, 7));
+      reader.onloadend = async () => {
+        const imagenComprimida = await comprimirImagen(reader.result, 800, 0.7);
+        setFotos((prev) => [...prev, imagenComprimida].slice(0, 7));
+        // Ejecutar OCR en segundo plano sobre la foto cargada
+        reconocerTextoFoto(imagenComprimida);
       };
       reader.readAsDataURL(file);
     });
@@ -192,21 +330,14 @@ export default function BitacoraIA() {
     setFotos(fotos.filter((_, i) => i !== index));
   };
 
-  // Geolocalización OpenStreetMap
   const obtenerUbicacionGPS = () => {
-    if (!("geolocation" in navigator)) {
-      alert("La geolocalización no está soportada en tu navegador.");
-      return;
-    }
-
+    if (!("geolocation" in navigator)) return alert("Geolocalización no soportada.");
     setCargandoGPS(true);
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
         try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`
-          );
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`);
           if (res.ok) {
             const data = await res.json();
             const comuna = data.address.suburb || data.address.city_district || data.address.town || "";
@@ -223,77 +354,47 @@ export default function BitacoraIA() {
       },
       () => {
         setCargandoGPS(false);
-        alert("No se pudo obtener el GPS automáticamente.");
+        alert("No se obtuvo el GPS.");
       },
       { timeout: 10000, enableHighAccuracy: true }
     );
   };
 
-  // Búsquedas externas
   const abrirLinkedin = () => {
-    if (!organizacion && !titulo) {
-      alert("Ingresa el nombre de una persona o empresa primero.");
-      return;
-    }
-    window.open(`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${organizacion}${titulo}`)}`, "_blank");
+    if (!organizacion && !titulo) return alert("Ingresa persona u organización primero.");
+    window.open(`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${organizacion} ${titulo}`)}`, "_blank");
   };
 
   const abrirGoogle = () => {
-    if (!organizacion && !titulo) {
-      alert("Ingresa el nombre de una persona o empresa primero.");
-      return;
-    }
-    window.open(`https://www.google.com/search?q=${encodeURIComponent(`${organizacion}${titulo}`)}`, "_blank");
+    if (!organizacion && !titulo) return alert("Ingresa persona u organización primero.");
+    window.open(`https://www.google.com/search?q=${encodeURIComponent(`${organizacion} ${titulo}`)}`, "_blank");
   };
 
   const abrirGoogleScholar = () => {
-    if (!organizacion && !titulo) {
-      alert("Ingresa el nombre de una persona o empresa primero.");
-      return;
-    }
-    window.open(`https://scholar.google.com/scholar?q=${encodeURIComponent(`${organizacion}${titulo}`)}`, "_blank");
+    if (!organizacion && !titulo) return alert("Ingresa persona u organización primero.");
+    window.open(`https://scholar.google.com/scholar?q=${encodeURIComponent(`${organizacion} ${titulo}`)}`, "_blank");
   };
 
-  // Procesamiento Experto Real
   const areaFinal = areaTematica === "Otro" ? (areaPersonalizada || "General") : areaTematica;
 
   const ejecutarProcesamientoExperto = () => {
     if (!titulo && fotos.length === 0 && !notasCrudas.trim()) {
-      alert("Escribe notas, un título o toma una foto antes de procesar.");
+      alert("Escribe notas o agrega un título antes de procesar.");
       return;
     }
 
     setCargandoIA(true);
     setTimeout(() => {
-      const analisisReal = procesarTextoExperto(notasCrudas, titulo, organizacion, areaFinal);
+      const analisisReal = sintetizarTextoAlgoritmico(notasCrudas, areaFinal);
       setResultadoExperto(analisisReal);
       setCargandoIA(false);
     }, 400);
   };
 
-  const investigarEntidad = () => {
-    if (!organizacion) {
-      alert("Ingresa el nombre de la organización o persona expositora.");
-      return;
-    }
-    setCargandoInvestigacion(true);
-    setTimeout(() => {
-      setInfoInvestigada({
-        entidad: organizacion,
-        perfil: `Búsqueda sugerida para "${organizacion}" [${areaFinal}]: Utiliza los accesos de LinkedIn o Scholar para revisar publicaciones y antecedentes.`,
-        sugerencia: "Verificar proyectos activos y publicaciones recientes."
-      });
-      setCargandoInvestigacion(false);
-    }, 600);
-  };
-
   const guardarEntrada = () => {
-    if (!titulo) {
-      alert("Asigna un título antes de guardar.");
-      return;
-    }
+    if (!titulo) return alert("Asigna un título antes de guardar.");
 
-    const analisisFinal = resultadoExperto || procesarTextoExperto(notasCrudas, titulo, organizacion, areaFinal);
+    const analisisFinal = resultadoExperto || sintetizarTextoAlgoritmico(notasCrudas, areaFinal);
 
     const fechaObj = new Date(fechaEvento);
     const fechaFormateada = isNaN(fechaObj.getTime())
@@ -321,22 +422,18 @@ export default function BitacoraIA() {
     };
 
     const actualizado = [nuevaEntrada, ...historial];
-    guardarEnLocalStorage(actualizado);
-    alert("¡Entrada guardada con éxito en tu historial!");
-
+    actualizarHistorialBD(actualizado);
+    alert("¡Entrada guardada correctamente en tu historial!");
     limpiarBorrador();
   };
 
   const borrarEntrada = (id) => {
-    if (confirm("¿Estás seguro de eliminar este registro del historial?")) {
-      guardarEnLocalStorage(historial.filter((item) => item.id !== id));
+    if (confirm("¿Estás seguro de eliminar este registro?")) {
+      actualizarHistorialBD(historial.filter((item) => item.id !== id));
     }
   };
 
-  // Funciones para expandir y editar historial
-  const toggleExpandir = (id) => {
-    setExpandidos((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
+  const toggleExpandir = (id) => setExpandidos((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const iniciarEdicion = (item) => {
     setEditandoId(item.id);
@@ -346,17 +443,14 @@ export default function BitacoraIA() {
   const guardarEdicion = (id) => {
     const actualizado = historial.map((item) => {
       if (item.id === id) {
-        // Recalcular síntesis si cambiaron las notas crudas
-        const analisisActualizado = procesarTextoExperto(
+        const analisisActualizado = sintetizarTextoAlgoritmico(
           editForm.notasCrudas || "",
-          editForm.titulo,
-          editForm.organizacion,
-          editForm.area
+          editForm.area || "General"
         );
 
         return {
           ...editForm,
-          resumen: editForm.resumen || analisisActualizado.resumen,
+          resumen: analisisActualizado.resumen,
           puntosClave: analisisActualizado.puntosClave,
           datosMetricas: analisisActualizado.datosYMetricas,
           tareas: analisisActualizado.accionesSugeridas
@@ -365,13 +459,12 @@ export default function BitacoraIA() {
       return item;
     });
 
-    guardarEnLocalStorage(actualizado);
+    actualizarHistorialBD(actualizado);
     setEditandoId(null);
     setEditForm({});
     alert("¡Registro actualizado correctamente!");
   };
 
-  // Filtrado de Historial
   const historialFiltrado = historial.filter((item) => {
     const coincideTexto = 
       item.titulo.toLowerCase().includes(busquedaHistorial.toLowerCase()) ||
@@ -392,24 +485,24 @@ export default function BitacoraIA() {
         <header className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-              <span>📓</span> Bitácora IA: Asistente Experto
+              <span>📓</span> Bitácora IA: Asistente Experto (OCR + DB)
             </h1>
             <p className="text-sm text-slate-500">
-              Captura charlas pasadas y presentes, clasifica por área y edita o expande tus apuntes guardados.
+              Captura charlas, lee texto de imágenes con OCR local y mantén respaldos seguros.
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={limpiarBorrador}
-              type="button"
-              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-full font-medium border transition"
-              title="Borrar formulario actual y empezar borrador limpio"
-            >
-              🧹 Limpiar Borrador
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={exportarRespaldoJSON} type="button" className="text-xs bg-sky-50 hover:bg-sky-100 text-sky-700 px-3 py-1.5 rounded-lg font-medium border border-sky-200 transition">
+              📥 Respaldar Datos
             </button>
-            <div className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full font-medium border border-indigo-100">
-              {new Date().toLocaleDateString("es-CL", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-            </div>
+            <button onClick={() => fileInputRestaurarRef.current.click()} type="button" className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg font-medium border border-emerald-200 transition">
+              📤 Cargar Respaldo
+            </button>
+            <input type="file" ref={fileInputRestaurarRef} onChange={importarRespaldoJSON} accept=".json" className="hidden" />
+
+            <button onClick={limpiarBorrador} type="button" className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-medium border transition">
+              🧹 Limpiar
+            </button>
           </div>
         </header>
 
@@ -423,52 +516,30 @@ export default function BitacoraIA() {
               <div className="flex justify-between items-center border-b pb-2">
                 <h2 className="text-lg font-semibold text-slate-800">1. Datos del Evento / Charla</h2>
                 <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">
-                  💾 Borrador autoguardado
+                  🔒 DB Protegida
                 </span>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Título de la Charla / Evento</label>
-                  <input 
-                    type="text" 
-                    value={titulo} 
-                    onChange={(e) => setTitulo(e.target.value)} 
-                    placeholder="Ej. Métodos de Extracción en Bioprocesos"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
-                  />
+                  <input type="text" value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej. Métodos de Extracción en Bioprocesos" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Organización, Empresa o Persona</label>
-                  <input 
-                    type="text" 
-                    value={organizacion} 
-                    onChange={(e) => setOrganizacion(e.target.value)} 
-                    placeholder="Ej. Dr. Roberto Silva / CORFO"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
-                  />
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Organización / Persona</label>
+                  <input type="text" value={organizacion} onChange={(e) => setOrganizacion(e.target.value)} placeholder="Ej. Dr. Roberto Silva / CORFO" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
                 </div>
               </div>
 
-              {/* Fecha y Categoría */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">📅 Fecha y Hora</label>
-                  <input 
-                    type="datetime-local" 
-                    value={fechaEvento}
-                    onChange={(e) => setFechaEvento(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm bg-white"
-                  />
+                  <input type="datetime-local" value={fechaEvento} onChange={(e) => setFechaEvento(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white" />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">🏷️ Área de Conocimiento</label>
-                  <select 
-                    value={areaTematica} 
-                    onChange={(e) => setAreaTematica(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm bg-white"
-                  >
+                  <select value={areaTematica} onChange={(e) => setAreaTematica(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white">
                     <option value="IA & Tecnología">IA & Tecnología</option>
                     <option value="Ciencias & Biotecnología">Ciencias & Biotecnología</option>
                     <option value="Arquitectura & Urbanismo">Arquitectura & Urbanismo</option>
@@ -482,11 +553,7 @@ export default function BitacoraIA() {
 
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Tipo de Evento</label>
-                  <select 
-                    value={tipoEvento} 
-                    onChange={(e) => setTipoEvento(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm bg-white"
-                  >
+                  <select value={tipoEvento} onChange={(e) => setTipoEvento(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white">
                     <option value="Seminario">Seminario</option>
                     <option value="Taller">Taller</option>
                     <option value="Conferencia">Conferencia</option>
@@ -498,62 +565,37 @@ export default function BitacoraIA() {
 
               {areaTematica === "Otro" && (
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Especifica el Área Personalizada</label>
-                  <input 
-                    type="text"
-                    value={areaPersonalizada}
-                    onChange={(e) => setAreaPersonalizada(e.target.value)}
-                    placeholder="Ej. Neurociencia, Minería..."
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
-                  />
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Especifica Área</label>
+                  <input type="text" value={areaPersonalizada} onChange={(e) => setAreaPersonalizada(e.target.value)} placeholder="Ej. Minería, Agronomía..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
                 </div>
               )}
 
-              {/* Botones de búsqueda */}
               <div className="pt-1 flex flex-wrap gap-2 items-center">
-                <span className="text-xs font-semibold text-slate-400 uppercase mr-1">Buscar Perfil En:</span>
-                <button type="button" onClick={abrirLinkedin} className="px-3 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 text-xs font-medium rounded-lg border border-sky-200 transition">💼 LinkedIn</button>
-                <button type="button" onClick={abrirGoogle} className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg border border-slate-200 transition">🔍 Google</button>
-                <button type="button" onClick={abrirGoogleScholar} className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-medium rounded-lg border border-amber-200 transition">🎓 Scholar</button>
+                <span className="text-xs font-semibold text-slate-400 uppercase mr-1">Perfil:</span>
+                <button type="button" onClick={abrirLinkedin} className="px-3 py-1 bg-sky-50 text-sky-700 text-xs font-medium rounded-lg border border-sky-200">💼 LinkedIn</button>
+                <button type="button" onClick={abrirGoogle} className="px-3 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-lg border border-slate-200">🔍 Google</button>
+                <button type="button" onClick={abrirGoogleScholar} className="px-3 py-1 bg-amber-50 text-amber-800 text-xs font-medium rounded-lg border border-amber-200">🎓 Scholar</button>
               </div>
 
-              {/* Ubicación */}
               <div className="pt-2">
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Lugar / Ubicación</label>
                 <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    value={ubicacion} 
-                    onChange={(e) => setUbicacion(e.target.value)} 
-                    placeholder="Ej. Providencia, Santiago"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
-                  />
-                  <button 
-                    type="button" 
-                    onClick={obtenerUbicacionGPS}
-                    disabled={cargandoGPS}
-                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium border border-slate-300 whitespace-nowrap transition"
-                  >
+                  <input type="text" value={ubicacion} onChange={(e) => setUbicacion(e.target.value)} placeholder="Ej. Providencia, Santiago" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                  <button type="button" onClick={obtenerUbicacionGPS} disabled={cargandoGPS} className="px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium border border-slate-300 whitespace-nowrap">
                     {cargandoGPS ? "⏳..." : "📍 GPS"}
                   </button>
                 </div>
               </div>
-
-              <div className="pt-1">
-                <span className="text-[11px] text-slate-400 mr-2">Comunas comunes:</span>
-                {["Providencia, Santiago", "Santiago Centro", "Valparaíso / Viña", "Concepción", "Antofagasta"].map((lugar) => (
-                  <button key={lugar} type="button" onClick={() => setUbicacion(lugar)} className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-0.5 rounded mr-1.5 transition">
-                    + {lugar}
-                  </button>
-                ))}
-              </div>
             </div>
 
-            {/* 2. Cámara Inmediata (Hasta 7 Fotos) */}
+            {/* 2. Sección Multimedia con OCR */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
               <div className="flex justify-between items-center border-b pb-2">
-                <h2 className="text-lg font-semibold text-slate-800">2. Cámara y Fotos Inmediatas (Hasta 7)</h2>
-                <span className="text-xs font-medium text-slate-500">{fotos.length} / 7 fotos</span>
+                <h2 className="text-lg font-semibold text-slate-800">2. Multimedia y OCR (Lectura Automática)</h2>
+                <div className="flex items-center gap-2">
+                  {leyendoOCR && <span className="text-xs text-indigo-600 font-semibold animate-pulse">🔍 Leyendo texto de foto...</span>}
+                  <span className="text-xs font-medium text-slate-500">{fotos.length} / 7 fotos</span>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -566,32 +608,37 @@ export default function BitacoraIA() {
                 ))}
 
                 {fotos.length < 7 && (
-                  <label className="aspect-square border-2 border-dashed border-indigo-300 bg-indigo-50/40 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 transition text-indigo-700">
-                    <span className="text-2xl mb-1">📸</span>
-                    <span className="text-xs font-semibold text-center px-2">Tomar Foto / Cámara</span>
-                    <input type="file" accept="image/*" capture="environment" onChange={handleCapturarFoto} className="hidden" />
-                  </label>
+                  <>
+                    <label className="aspect-square border-2 border-dashed border-indigo-300 bg-indigo-50/40 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500 transition text-indigo-700">
+                      <span className="text-2xl mb-1">📸</span>
+                      <span className="text-xs font-semibold text-center px-1">Tomar Foto</span>
+                      <input type="file" accept="image/*" capture="environment" onChange={handleProcesarArchivos} className="hidden" />
+                    </label>
+
+                    <label className="aspect-square border-2 border-dashed border-slate-300 bg-slate-50 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500 transition text-slate-700">
+                      <span className="text-2xl mb-1">📂</span>
+                      <span className="text-xs font-semibold text-center px-1">Buscar Archivos</span>
+                      <input type="file" accept="image/*" multiple onChange={handleProcesarArchivos} className="hidden" />
+                    </label>
+                  </>
                 )}
               </div>
             </div>
 
-            {/* 3. Apuntes Reales y Evaluación */}
+            {/* 3. Apuntes */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-              <h2 className="text-lg font-semibold text-slate-800 border-b pb-2">3. Tus Notas Crudas y Evaluación</h2>
+              <h2 className="text-lg font-semibold text-slate-800 border-b pb-2">3. Tus Notas Crudas y Texto Extraído</h2>
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                  Escribe tus apuntes aquí (Separados por saltos de línea o puntos)
+                  Ingresa o complementa tus notas (El OCR agregará texto de fotos aquí)
                 </label>
                 <textarea 
-                  rows="4"
+                  rows="5"
                   value={notasCrudas} 
                   onChange={(e) => setNotasCrudas(e.target.value)} 
-                  placeholder="Ejemplo:
-- Inversión requerida: $50 millones para el Q3
-- Revisar informe técnico con el equipo
-- Eficiencia del proceso aumentó un 35%..."
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm font-mono"
+                  placeholder="Escribe tus apuntes o toma una foto para extraer texto automáticamente..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
                 ></textarea>
               </div>
 
@@ -600,31 +647,25 @@ export default function BitacoraIA() {
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Valoración</label>
                   <div className="flex items-center gap-1 mb-3">
                     {[1, 2, 3, 4, 5].map((star) => (
-                      <button key={star} type="button" onClick={() => setEstrellas(star)} className={`text-2xl transition ${star <= estrellas ? 'text-amber-400 scale-110' : 'text-slate-200 hover:text-amber-200'}`}>★</button>
+                      <button key={star} type="button" onClick={() => setEstrellas(star)} className={`text-2xl transition ${star <= estrellas ? 'text-amber-400 scale-110' : 'text-slate-200'}`}>★</button>
                     ))}
                     <span className="text-xs text-slate-500 ml-2">({estrellas}/5)</span>
                   </div>
 
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => setValoracion('like')} className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-medium transition ${valoracion === 'like' ? 'bg-emerald-50 border-emerald-500 text-emerald-700 font-semibold' : 'bg-white border-slate-200 text-slate-600'}`}>👍 Útil</button>
-                    <button type="button" onClick={() => setValoracion('dislike')} className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-medium transition ${valoracion === 'dislike' ? 'bg-rose-50 border-rose-500 text-rose-700 font-semibold' : 'bg-white border-slate-200 text-slate-600'}`}>👎 Poco útil</button>
+                    <button type="button" onClick={() => setValoracion('like')} className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-medium ${valoracion === 'like' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-slate-200 text-slate-600'}`}>👍 Útil</button>
+                    <button type="button" onClick={() => setValoracion('dislike')} className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-medium ${valoracion === 'dislike' ? 'bg-rose-50 border-rose-500 text-rose-700' : 'bg-white border-slate-200 text-slate-600'}`}>👎 Poco útil</button>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">¿Por qué? / Comentario Personal</label>
-                  <textarea 
-                    rows="3"
-                    value={opinion}
-                    onChange={(e) => setOpinion(e.target.value)}
-                    placeholder="Ej. Me pareció útil la cifra de ROI presentada..."
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm"
-                  ></textarea>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Comentario Personal</label>
+                  <textarea rows="3" value={opinion} onChange={(e) => setOpinion(e.target.value)} placeholder="Comentario personal..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></textarea>
                 </div>
               </div>
             </div>
 
-            {/* Botones de Procesamiento Experto */}
+            {/* Acciones */}
             <div className="flex flex-wrap gap-3">
               <button 
                 type="button"
@@ -632,54 +673,36 @@ export default function BitacoraIA() {
                 disabled={cargandoIA}
                 className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-6 rounded-xl shadow transition flex items-center justify-center gap-2 text-sm disabled:opacity-50"
               >
-                {cargandoIA ? "⚙️ Analizando tus notas..." : "🎯 Procesamiento Experto Sintético"}
-              </button>
-
-              <button 
-                type="button"
-                onClick={investigarEntidad}
-                disabled={cargandoInvestigacion}
-                className="bg-white hover:bg-slate-100 text-indigo-700 border border-indigo-200 font-medium py-3 px-6 rounded-xl shadow-sm transition flex items-center justify-center gap-2 text-sm disabled:opacity-50"
-              >
-                {cargandoInvestigacion ? "🔍..." : "🏢 Contexto Entidad"}
+                {cargandoIA ? "⚙️ Sintetizando..." : "🎯 Generar Síntesis Algorítmica"}
               </button>
             </div>
 
-            {/* Contexto Entidad */}
-            {infoInvestigada && (
-              <div className="bg-indigo-50 border border-indigo-200 p-5 rounded-2xl space-y-2">
-                <h3 className="text-sm font-bold text-indigo-900 flex items-center gap-2"><span>💡</span> Contexto sobre {infoInvestigada.entidad}:</h3>
-                <p className="text-xs text-indigo-800 leading-relaxed">{infoInvestigada.perfil}</p>
-              </div>
-            )}
-
-            {/* Resultado Sintético Real */}
             {resultadoExperto && (
               <div className="bg-white border-2 border-indigo-500/40 p-6 rounded-2xl space-y-4 shadow-md">
                 <div className="flex justify-between items-center border-b pb-2">
                   <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <span>🎯</span> Síntesis Experta [{areaFinal}]
+                    <span>🎯</span> Síntesis Generada
                   </h3>
-                  <span className="text-xs bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-full font-semibold">Procesado</span>
+                  <span className="text-xs bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded-full font-semibold">Listo</span>
                 </div>
 
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-                  <h4 className="text-xs font-semibold text-slate-500 uppercase mb-1">Resumen Ejecutivo Directo</h4>
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase mb-1">Resumen Condensado</h4>
                   <p className="text-sm text-slate-800 font-medium">{resultadoExperto.resumen}</p>
                 </div>
 
                 {resultadoExperto.puntosClave.length > 0 && (
                   <div>
-                    <h4 className="text-xs font-semibold text-slate-500 uppercase">Ideas y Conceptos Extraídos</h4>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase">Conceptos Destacados</h4>
                     <ul className="list-disc list-inside text-sm text-slate-700 mt-1 space-y-1">
                       {resultadoExperto.puntosClave.map((punto, i) => (<li key={i}>{punto}</li>))}
                     </ul>
                   </div>
                 )}
 
-                {resultadoExperto.datosYMetricas && resultadoExperto.datosYMetricas.length > 0 && (
+                {resultadoExperto.datosYMetricas.length > 0 && (
                   <div className="bg-amber-50 p-3 rounded-lg border border-amber-200">
-                    <h4 className="text-xs font-semibold text-amber-900 uppercase mb-1">📊 Cifras y Datos Técnicos Detectados</h4>
+                    <h4 className="text-xs font-semibold text-amber-900 uppercase mb-1">📊 Cifras y Datos Registrados</h4>
                     <ul className="list-disc list-inside text-sm text-amber-950 space-y-1">
                       {resultadoExperto.datosYMetricas.map((dato, i) => (<li key={i}>{dato}</li>))}
                     </ul>
@@ -688,7 +711,7 @@ export default function BitacoraIA() {
 
                 {resultadoExperto.accionesSugeridas.length > 0 && (
                   <div>
-                    <h4 className="text-xs font-semibold text-indigo-700 uppercase">✅ Acciones / Tareas Detectadas</h4>
+                    <h4 className="text-xs font-semibold text-indigo-700 uppercase">✅ Acciones Detectadas</h4>
                     <ul className="list-disc list-inside text-sm text-indigo-900 font-medium mt-1 space-y-1">
                       {resultadoExperto.accionesSugeridas.map((accion, i) => (<li key={i}>{accion}</li>))}
                     </ul>
@@ -697,7 +720,7 @@ export default function BitacoraIA() {
 
                 <div className="pt-2 flex justify-end">
                   <button type="button" onClick={guardarEntrada} className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-6 rounded-xl text-sm shadow transition">
-                    💾 Guardar en Bitácora Definitiva
+                    💾 Guardar en Bitácora
                   </button>
                 </div>
               </div>
@@ -705,30 +728,19 @@ export default function BitacoraIA() {
 
           </div>
 
-          {/* Historial con Expandir y Edición Directa */}
+          {/* Historial */}
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4 sticky top-6">
               <div className="flex justify-between items-center border-b pb-2">
-                <h2 className="text-lg font-semibold text-slate-800">Historial Guardado</h2>
+                <h2 className="text-lg font-semibold text-slate-800">Historial</h2>
                 <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">{historialFiltrado.length} registros</span>
               </div>
               
-              {/* Controles de Filtros */}
               <div className="space-y-2">
-                <input 
-                  type="text" 
-                  value={busquedaHistorial} 
-                  onChange={(e) => setBusquedaHistorial(e.target.value)} 
-                  placeholder="🔍 Buscar por palabra clave..." 
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-slate-50 focus:bg-white" 
-                />
+                <input type="text" value={busquedaHistorial} onChange={(e) => setBusquedaHistorial(e.target.value)} placeholder="🔍 Buscar..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-slate-50" />
 
                 <div className="grid grid-cols-2 gap-2">
-                  <select 
-                    value={filtroArea} 
-                    onChange={(e) => setFiltroArea(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-slate-50"
-                  >
+                  <select value={filtroArea} onChange={(e) => setFiltroArea(e.target.value)} className="w-full px-2 py-1.5 border rounded text-xs bg-slate-50">
                     <option value="TODOS">Todas las Áreas</option>
                     <option value="IA & Tecnología">IA & Tecnología</option>
                     <option value="Ciencias & Biotecnología">Ciencias & Biotecnología</option>
@@ -738,11 +750,7 @@ export default function BitacoraIA() {
                     <option value="Sustentabilidad & Reciclaje">Sustentabilidad</option>
                   </select>
 
-                  <select 
-                    value={filtroTipo} 
-                    onChange={(e) => setFiltroTipo(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-slate-50"
-                  >
+                  <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)} className="w-full px-2 py-1.5 border rounded text-xs bg-slate-50">
                     <option value="TODOS">Todos los Tipos</option>
                     <option value="Seminario">Seminario</option>
                     <option value="Taller">Taller</option>
@@ -753,31 +761,23 @@ export default function BitacoraIA() {
                 </div>
               </div>
 
-              {/* Lista de Tarjetas del Historial */}
               <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
                 {historialFiltrado.length === 0 ? (
-                  <p className="text-xs text-slate-400 text-center py-6">No se encontraron registros con los filtros seleccionados.</p>
+                  <p className="text-xs text-slate-400 text-center py-6">No hay registros guardados.</p>
                 ) : (
                   historialFiltrado.map((item) => {
                     const estaExpandido = !!expandidos[item.id];
                     const estaEditando = editandoId === item.id;
 
                     return (
-                      <div key={item.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white transition space-y-3 relative group shadow-2xs">
-                        
-                        {/* Botón Borrar */}
-                        <button onClick={() => borrarEntrada(item.id)} className="absolute top-3 right-3 text-slate-300 hover:text-red-500 text-xs transition">🗑️</button>
+                      <div key={item.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white transition space-y-3 relative group">
+                        <button onClick={() => borrarEntrada(item.id)} className="absolute top-3 right-3 text-slate-300 hover:text-red-500 text-xs">🗑️</button>
 
                         {!estaEditando ? (
                           <>
-                            {/* Cabecera Tarjeta */}
                             <div className="flex flex-wrap items-center gap-1 pr-6">
                               <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">{item.tipo}</span>
-                              {item.area && (
-                                <span className="text-[10px] font-semibold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full">
-                                  🏷️ {item.area}
-                                </span>
-                              )}
+                              {item.area && <span className="text-[10px] font-semibold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full">🏷️ {item.area}</span>}
                               <span className="text-[10px] text-slate-400 ml-auto">📅 {item.fecha}</span>
                             </div>
 
@@ -785,147 +785,55 @@ export default function BitacoraIA() {
                             {item.organizacion && <p className="text-xs text-slate-600 font-medium">🏢 {item.organizacion}</p>}
                             <p className="text-xs text-slate-500">📍 {item.ubicacion}</p>
 
-                            {/* Resumen Vista Previa */}
                             <div className="text-xs bg-white p-2.5 rounded-lg border border-slate-200 text-slate-800 font-medium">
                               {item.resumen}
                             </div>
 
-                            {/* Fotos miniaturas */}
                             {item.fotos && item.fotos.length > 0 && (
                               <div className="flex gap-1 overflow-x-auto pt-1">
                                 {item.fotos.map((f, idx) => (
-                                  <img key={idx} src={f} alt="thumb" onClick={() => setFotoModal(f)} className="w-8 h-8 object-cover rounded cursor-pointer border border-slate-200 hover:opacity-80" />
+                                  <img key={idx} src={f} alt="thumb" onClick={() => setFotoModal(f)} className="w-8 h-8 object-cover rounded cursor-pointer border hover:opacity-80" />
                                 ))}
                               </div>
                             )}
 
-                            {/* Detalle Expandido */}
                             {estaExpandido && (
-                              <div className="pt-2 border-t border-slate-200 space-y-3 text-xs bg-slate-100/70 p-3 rounded-lg mt-2">
+                              <div className="pt-2 border-t space-y-3 text-xs bg-slate-100/70 p-3 rounded-lg mt-2">
                                 {item.notasCrudas && (
                                   <div>
-                                    <span className="font-bold text-slate-600 uppercase text-[10px]">Apuntes Crudos Originales:</span>
+                                    <span className="font-bold text-slate-600 uppercase text-[10px]">Apuntes Crudos:</span>
                                     <p className="font-mono text-slate-700 whitespace-pre-wrap mt-0.5">{item.notasCrudas}</p>
-                                  </div>
-                                )}
-
-                                {item.puntosClave && item.puntosClave.length > 0 && (
-                                  <div>
-                                    <span className="font-bold text-slate-600 uppercase text-[10px]">Ideas Principales Extraídas:</span>
-                                    <ul className="list-disc list-inside text-slate-700 mt-0.5 space-y-0.5">
-                                      {item.puntosClave.map((p, i) => <li key={i}>{p}</li>)}
-                                    </ul>
-                                  </div>
-                                )}
-
-                                {item.datosMetricas && item.datosMetricas.length > 0 && (
-                                  <div>
-                                    <span className="font-bold text-amber-800 uppercase text-[10px]">📊 Cifras y Datos Técnicos:</span>
-                                    <ul className="list-disc list-inside text-amber-950 mt-0.5 space-y-0.5">
-                                      {item.datosMetricas.map((d, i) => <li key={i}>{d}</li>)}
-                                    </ul>
-                                  </div>
-                                )}
-
-                                {item.opinion && (
-                                  <div>
-                                    <span className="font-bold text-slate-600 uppercase text-[10px]">Comentario / Opinión:</span>
-                                    <p className="text-slate-700 italic mt-0.5">"{item.opinion}"</p>
                                   </div>
                                 )}
                               </div>
                             )}
 
-                            {/* Botones de Acción Tarjeta */}
                             <div className="flex justify-between items-center pt-1 text-xs">
-                              <button 
-                                onClick={() => toggleExpandir(item.id)}
-                                className="text-indigo-600 hover:text-indigo-800 font-semibold text-[11px] flex items-center gap-1"
-                              >
-                                {estaExpandido ? "▲ Ocultar Detalle" : "📖 Ver todo y notas"}
+                              <button onClick={() => toggleExpandir(item.id)} className="text-indigo-600 hover:text-indigo-800 font-semibold text-[11px]">
+                                {estaExpandido ? "▲ Ocultar" : "📖 Ver todo"}
                               </button>
-
-                              <button 
-                                onClick={() => iniciarEdicion(item)}
-                                className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-2.5 py-1 rounded-md text-[11px] font-medium transition"
-                              >
+                              <button onClick={() => iniciarEdicion(item)} className="bg-slate-200 text-slate-700 px-2.5 py-1 rounded-md text-[11px] font-medium">
                                 ✏️ Editar
                               </button>
                             </div>
                           </>
                         ) : (
-                          /* Formulario de Edición Directa */
                           <div className="space-y-3 pt-1">
                             <span className="text-xs font-bold text-indigo-700 block border-b pb-1">✏️ Editando Registro</span>
-                            
                             <div>
                               <label className="text-[10px] uppercase font-bold text-slate-500">Título</label>
-                              <input 
-                                type="text" 
-                                value={editForm.titulo || ""} 
-                                onChange={(e) => setEditForm({ ...editForm, titulo: e.target.value })}
-                                className="w-full text-xs p-1.5 border rounded bg-white"
-                              />
+                              <input type="text" value={editForm.titulo || ""} onChange={(e) => setEditForm({ ...editForm, titulo: e.target.value })} className="w-full text-xs p-1.5 border rounded bg-white" />
                             </div>
-
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <label className="text-[10px] uppercase font-bold text-slate-500">Organización</label>
-                                <input 
-                                  type="text" 
-                                  value={editForm.organizacion || ""} 
-                                  onChange={(e) => setEditForm({ ...editForm, organizacion: e.target.value })}
-                                  className="w-full text-xs p-1.5 border rounded bg-white"
-                                />
-                              </div>
-                              <div>
-                                <label className="text-[10px] uppercase font-bold text-slate-500">Ubicación</label>
-                                <input 
-                                  type="text" 
-                                  value={editForm.ubicacion || ""} 
-                                  onChange={(e) => setEditForm({ ...editForm, ubicacion: e.target.value })}
-                                  className="w-full text-xs p-1.5 border rounded bg-white"
-                                />
-                              </div>
-                            </div>
-
                             <div>
-                              <label className="text-[10px] uppercase font-bold text-slate-500">Editar Apuntes Crudos</label>
-                              <textarea 
-                                rows="3"
-                                value={editForm.notasCrudas || ""} 
-                                onChange={(e) => setEditForm({ ...editForm, notasCrudas: e.target.value })}
-                                className="w-full text-xs p-1.5 border rounded bg-white font-mono"
-                              ></textarea>
+                              <label className="text-[10px] uppercase font-bold text-slate-500">Notas</label>
+                              <textarea rows="3" value={editForm.notasCrudas || ""} onChange={(e) => setEditForm({ ...editForm, notasCrudas: e.target.value })} className="w-full text-xs p-1.5 border rounded bg-white font-mono"></textarea>
                             </div>
-
-                            <div>
-                              <label className="text-[10px] uppercase font-bold text-slate-500">Editar Síntesis Corta</label>
-                              <textarea 
-                                rows="2"
-                                value={editForm.resumen || ""} 
-                                onChange={(e) => setEditForm({ ...editForm, resumen: e.target.value })}
-                                className="w-full text-xs p-1.5 border rounded bg-white font-medium"
-                              ></textarea>
-                            </div>
-
                             <div className="flex justify-end gap-2 pt-2">
-                              <button 
-                                onClick={() => setEditandoId(null)}
-                                className="px-3 py-1 bg-slate-200 text-slate-700 text-xs rounded-lg font-medium"
-                              >
-                                Cancelar
-                              </button>
-                              <button 
-                                onClick={() => guardarEdicion(item.id)}
-                                className="px-3 py-1 bg-emerald-600 text-white text-xs rounded-lg font-medium shadow hover:bg-emerald-700"
-                              >
-                                💾 Guardar Cambios
-                              </button>
+                              <button onClick={() => setEditandoId(null)} className="px-3 py-1 bg-slate-200 text-slate-700 text-xs rounded-lg">Cancelar</button>
+                              <button onClick={() => guardarEdicion(item.id)} className="px-3 py-1 bg-emerald-600 text-white text-xs rounded-lg font-medium">💾 Guardar</button>
                             </div>
                           </div>
                         )}
-
                       </div>
                     );
                   })
