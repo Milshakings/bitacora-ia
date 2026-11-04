@@ -4,7 +4,43 @@ import React, { useState, useEffect, useRef } from "react";
 import "./globals.css";
 import { createWorker } from 'tesseract.js';
 
-// Compresión de imágenes para optimizar espacio en IndexedDB
+// Preprocesamiento de imagen para mejorar OCR en pantallas LED (contraste y binarización)
+const preprocesarImagenParaOCR = (base64Str, maxWidth = 1000) => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = base64Str;
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let width = img.width;
+      let height = img.height;
+
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Mejorar contraste para pantallas LED
+      const imgData = ctx.getImageData(0, 0, width, height);
+      const data = imgData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        // Promedio de grises con realce de contraste
+        let avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+        let c = avg < 120 ? 0 : 255; // Binarización adaptativa simple
+        data[i] = c;
+        data[i + 1] = c;
+        data[i + 2] = c;
+      }
+      ctx.putImageData(imgData, 0, 0);
+      resolve(canvas.toDataURL("image/jpeg", 0.85));
+    };
+  });
+};
+
 const comprimirImagen = (base64Str, maxWidth = 800, quality = 0.7) => {
   return new Promise((resolve) => {
     const img = new Image();
@@ -28,7 +64,6 @@ const comprimirImagen = (base64Str, maxWidth = 800, quality = 0.7) => {
   });
 };
 
-// NLP Local de Asistente Experto
 function sintetizarTextoAlgoritmico(textoOriginal, area) {
   if (!textoOriginal || !textoOriginal.trim()) {
     return {
@@ -113,6 +148,7 @@ function sintetizarTextoAlgoritmico(textoOriginal, area) {
 
 export default function BitacoraIA() {
   const [titulo, setTitulo] = useState("");
+  const [expositor, setExpositor] = useState(""); // Campo independiente para el expositor
   const [organizacion, setOrganizacion] = useState("");
   const [tipoEvento, setTipoEvento] = useState("Seminario");
   const [areaTematica, setAreaTematica] = useState("IA & Tecnología");
@@ -144,7 +180,6 @@ export default function BitacoraIA() {
 
   const fileInputRestaurarRef = useRef(null);
 
-  // Cargar datos de IndexedDB
   useEffect(() => {
     async function cargarDatosBD() {
       try {
@@ -171,6 +206,7 @@ export default function BitacoraIA() {
             const draft = reqBorrador.result;
             if (draft) {
               if (draft.titulo) setTitulo(draft.titulo);
+              if (draft.expositor) setExpositor(draft.expositor);
               if (draft.organizacion) setOrganizacion(draft.organizacion);
               if (draft.tipoEvento) setTipoEvento(draft.tipoEvento);
               if (draft.areaTematica) setAreaTematica(draft.areaTematica);
@@ -209,6 +245,7 @@ export default function BitacoraIA() {
   useEffect(() => {
     const borradorActual = {
       titulo,
+      expositor,
       organizacion,
       tipoEvento,
       areaTematica,
@@ -222,24 +259,25 @@ export default function BitacoraIA() {
       opinion
     };
     guardarEnBD("borrador", borradorActual);
-  }, [titulo, organizacion, tipoEvento, areaTematica, areaPersonalizada, fechaEvento, ubicacion, notasCrudas, fotos, estrellas, valoracion, opinion]);
+  }, [titulo, expositor, organizacion, tipoEvento, areaTematica, areaPersonalizada, fechaEvento, ubicacion, notasCrudas, fotos, estrellas, valoracion, opinion]);
 
   const actualizarHistorialBD = (nuevoHistorial) => {
     setHistorial(nuevoHistorial);
     guardarEnBD("historial", nuevoHistorial);
   };
 
-  // OCR local con Tesseract.js
+  // OCR optimizado con preprocesamiento de imagen
   const reconocerTextoFoto = async (imageSrc) => {
     setLeyendoOCR(true);
     try {
+      const imagenOptimizada = await preprocesarImagenParaOCR(imageSrc, 1000);
       const worker = await createWorker('spa');
-      const ret = await worker.recognize(imageSrc);
+      const ret = await worker.recognize(imagenOptimizada);
       const textoDetectado = ret.data.text;
       await worker.terminate();
 
       if (textoDetectado && textoDetectado.trim().length > 3) {
-        setNotasCrudas((prev) => prev + "\n[OCR Imagen]: " + textoDetectado.trim());
+        setNotasCrudas((prev) => prev + "\n[OCR Pantalla]: " + textoDetectado.trim());
       }
     } catch (err) {
       console.error("Error en OCR:", err);
@@ -248,13 +286,8 @@ export default function BitacoraIA() {
     }
   };
 
-  // Respaldo y Restauración JSON
   const exportarRespaldoJSON = () => {
-    const datosRespaldo = {
-      version: 1,
-      fechaRespaldo: new Date().toISOString(),
-      historial: historial
-    };
+    const datosRespaldo = { version: 1, fechaRespaldo: new Date().toISOString(), historial };
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(datosRespaldo, null, 2));
     const downloadAnchor = document.createElement("a");
     downloadAnchor.setAttribute("href", dataStr);
@@ -290,6 +323,7 @@ export default function BitacoraIA() {
 
   const limpiarBorrador = () => {
     setTitulo("");
+    setExpositor("");
     setOrganizacion("");
     setUbicacion("");
     setNotasCrudas("");
@@ -314,7 +348,7 @@ export default function BitacoraIA() {
     files.forEach((file) => {
       const reader = new FileReader();
       reader.onloadend = async () => {
-        const imagenComprimida = await comprimirImagen(reader.result, 800, 0.7);
+        const imagenComprimida = await comprimirImagen(reader.result, 900, 0.75);
         setFotos((prev) => [...prev, imagenComprimida].slice(0, 7));
         reconocerTextoFoto(imagenComprimida);
       };
@@ -356,19 +390,23 @@ export default function BitacoraIA() {
     );
   };
 
-  const abrirLinkedin = () => {
-    if (!organizacion && !titulo) return alert("Ingresa persona u organización primero.");
-    window.open(`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${organizacion} ${titulo}`)}`, "_blank");
+  // Botón LinkedIn enfocado 100% en el Expositor
+  const abrirLinkedinExpositor = () => {
+    if (!expositor) {
+      alert("Ingresa el nombre del expositor primero en su campo correspondiente.");
+      return;
+    }
+    window.open(`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(expositor)}`, "_blank");
   };
 
   const abrirGoogle = () => {
-    if (!organizacion && !titulo) return alert("Ingresa persona u organización primero.");
-    window.open(`https://www.google.com/search?q=${encodeURIComponent(`${organizacion} ${titulo}`)}`, "_blank");
+    if (!organizacion && !titulo && !expositor) return alert("Ingresa datos de búsqueda primero.");
+    window.open(`https://www.google.com/search?q=${encodeURIComponent(`${expositor || ""} ${organizacion || ""} ${titulo || ""}`)}`, "_blank");
   };
 
   const abrirGoogleScholar = () => {
-    if (!organizacion && !titulo) return alert("Ingresa persona u organización primero.");
-    window.open(`https://scholar.google.com/scholar?q=${encodeURIComponent(`${organizacion} ${titulo}`)}`, "_blank");
+    if (!titulo && !expositor) return alert("Ingresa un tema o expositor primero.");
+    window.open(`https://scholar.google.com/scholar?q=${encodeURIComponent(`${expositor || ""} ${titulo || ""}`)}`, "_blank");
   };
 
   const areaFinal = areaTematica === "Otro" ? (areaPersonalizada || "General") : areaTematica;
@@ -400,6 +438,7 @@ export default function BitacoraIA() {
     const nuevaEntrada = {
       id: Date.now(),
       titulo,
+      expositor: expositor || "No especificado",
       organizacion: organizacion || "No especificada",
       ubicacion: ubicacion || "Lugar no registrado",
       tipo: tipoEvento,
@@ -419,7 +458,7 @@ export default function BitacoraIA() {
 
     const actualizado = [nuevaEntrada, ...historial];
     actualizarHistorialBD(actualizado);
-    alert("¡Entrada guardada correctamente en tu historial!");
+    alert("¡Entrada guardada correctamente!");
     limpiarBorrador();
   };
 
@@ -439,11 +478,7 @@ export default function BitacoraIA() {
   const guardarEdicion = (id) => {
     const actualizado = historial.map((item) => {
       if (item.id === id) {
-        const analisisActualizado = sintetizarTextoAlgoritmico(
-          editForm.notasCrudas || "",
-          editForm.area || "General"
-        );
-
+        const analisisActualizado = sintetizarTextoAlgoritmico(editForm.notasCrudas || "", editForm.area || "General");
         return {
           ...editForm,
           resumen: analisisActualizado.resumen,
@@ -458,14 +493,14 @@ export default function BitacoraIA() {
     actualizarHistorialBD(actualizado);
     setEditandoId(null);
     setEditForm({});
-    alert("¡Registro actualizado correctamente!");
+    alert("¡Registro actualizado!");
   };
 
   const historialFiltrado = historial.filter((item) => {
     const coincideTexto = 
       item.titulo.toLowerCase().includes(busquedaHistorial.toLowerCase()) ||
       item.organizacion.toLowerCase().includes(busquedaHistorial.toLowerCase()) ||
-      item.ubicacion.toLowerCase().includes(busquedaHistorial.toLowerCase());
+      item.expositor.toLowerCase().includes(busquedaHistorial.toLowerCase());
 
     const coincideArea = filtroArea === "TODOS" || item.area === filtroArea;
     const coincideTipo = filtroTipo === "TODOS" || item.tipo === filtroTipo;
@@ -481,22 +516,21 @@ export default function BitacoraIA() {
         <header className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-              <span>📓</span> Bitácora IA: Asistente Experto (OCR + DB)
+              <span>📓</span> Bitácora IA: Asistente Pro
             </h1>
             <p className="text-sm text-slate-500">
-              Captura charlas, lee texto de imágenes con OCR local y mantén respaldos seguros.
+              Captura optimizada para pantallas LED, OCR mejorado y LinkedIn por expositor.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={exportarRespaldoJSON} type="button" className="text-xs bg-sky-50 hover:bg-sky-100 text-sky-700 px-3 py-1.5 rounded-lg font-medium border border-sky-200 transition">
-              📥 Respaldar Datos
+            <button onClick={exportarRespaldoJSON} type="button" className="text-xs bg-sky-50 hover:bg-sky-100 text-sky-700 px-3 py-1.5 rounded-lg font-medium border border-sky-200">
+              📥 Respaldar
             </button>
-            <button onClick={() => fileInputRestaurarRef.current.click()} type="button" className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg font-medium border border-emerald-200 transition">
-              📤 Cargar Respaldo
+            <button onClick={() => fileInputRestaurarRef.current.click()} type="button" className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg font-medium border border-emerald-200">
+              📤 Cargar
             </button>
             <input type="file" ref={fileInputRestaurarRef} onChange={importarRespaldoJSON} accept=".json" className="hidden" />
-
-            <button onClick={limpiarBorrador} type="button" className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-medium border transition">
+            <button onClick={limpiarBorrador} type="button" className="text-xs bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg border">
               🧹 Limpiar
             </button>
           </div>
@@ -510,95 +544,102 @@ export default function BitacoraIA() {
             {/* 1. Datos del Evento */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
               <div className="flex justify-between items-center border-b pb-2">
-                <h2 className="text-lg font-semibold text-slate-800">1. Datos del Evento / Charla</h2>
+                <h2 className="text-lg font-semibold text-slate-800">1. Datos de la Charla y Expositor</h2>
                 <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">
-                  🔒 DB Protegida
+                  🔒 DB Segura
                 </span>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Título de la Charla / Evento</label>
-                  <input type="text" value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej. Métodos de Extracción en Bioprocesos" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Título de la Charla</label>
+                  <input type="text" value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej. Pilares de la Gestión Energética" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Organización / Persona</label>
-                  <input type="text" value={organizacion} onChange={(e) => setOrganizacion(e.target.value)} placeholder="Ej. Dr. Roberto Silva / CORFO" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Persona Expositora (Speaker)</label>
+                  <input type="text" value={expositor} onChange={(e) => setExpositor(e.target.value)} placeholder="Ej. Juan Pérez" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Organización / Empresa</label>
+                  <input type="text" value={organizacion} onChange={(e) => setOrganizacion(e.target.value)} placeholder="Ej. Codelco" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">📅 Fecha y Hora</label>
                   <input type="datetime-local" value={fechaEvento} onChange={(e) => setFechaEvento(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white" />
                 </div>
+              </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">🏷️ Área de Conocimiento</label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">🏷️ Área</label>
                   <select value={areaTematica} onChange={(e) => setAreaTematica(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white">
                     <option value="IA & Tecnología">IA & Tecnología</option>
                     <option value="Ciencias & Biotecnología">Ciencias & Biotecnología</option>
                     <option value="Arquitectura & Urbanismo">Arquitectura & Urbanismo</option>
                     <option value="Educación & EdTech">Educación & EdTech</option>
                     <option value="Negocios & Innovación">Negocios & Innovación</option>
-                    <option value="Economía & Finanzas">Economía & Finanzas</option>
-                    <option value="Sustentabilidad & Reciclaje">Sustentabilidad & Reciclaje</option>
-                    <option value="Otro">Otro (Especificar)</option>
+                    <option value="Sustentabilidad & Energía">Sustentabilidad & Energía</option>
+                    <option value="Otro">Otro</option>
                   </select>
                 </div>
-
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Tipo de Evento</label>
                   <select value={tipoEvento} onChange={(e) => setTipoEvento(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white">
                     <option value="Seminario">Seminario</option>
                     <option value="Taller">Taller</option>
                     <option value="Conferencia">Conferencia</option>
-                    <option value="Terreno">Visita a Terreno</option>
-                    <option value="Reunión">Reunión de Negocios</option>
+                    <option value="Terreno">Terreno</option>
+                    <option value="Reunión">Reunión</option>
                   </select>
                 </div>
               </div>
 
-              {areaTematica === "Otro" && (
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Especifica Área</label>
-                  <input type="text" value={areaPersonalizada} onChange={(e) => setAreaPersonalizada(e.target.value)} placeholder="Ej. Minería, Agronomía..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
-                </div>
-              )}
-
-              <div className="pt-1 flex flex-wrap gap-2 items-center">
-                <span className="text-xs font-semibold text-slate-400 uppercase mr-1">Perfil:</span>
-                <button type="button" onClick={abrirLinkedin} className="px-3 py-1 bg-sky-50 text-sky-700 text-xs font-medium rounded-lg border border-sky-200">💼 LinkedIn</button>
+              {/* Botón LinkedIn exclusivo para el expositor */}
+              <div className="pt-2 flex flex-wrap gap-2 items-center border-t border-slate-100">
+                <span className="text-xs font-semibold text-slate-400 uppercase mr-1">Búsquedas:</span>
+                <button type="button" onClick={abrirLinkedinExpositor} className="px-3 py-1 bg-sky-50 text-sky-700 text-xs font-medium rounded-lg border border-sky-200">💼 LinkedIn Expositor</button>
                 <button type="button" onClick={abrirGoogle} className="px-3 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-lg border border-slate-200">🔍 Google</button>
                 <button type="button" onClick={abrirGoogleScholar} className="px-3 py-1 bg-amber-50 text-amber-800 text-xs font-medium rounded-lg border border-amber-200">🎓 Scholar</button>
               </div>
 
-              <div className="pt-2">
+              <div className="pt-1">
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Lugar / Ubicación</label>
                 <div className="flex gap-2">
-                  <input type="text" value={ubicacion} onChange={(e) => setUbicacion(e.target.value)} placeholder="Ej. Providencia, Santiago" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
-                  <button type="button" onClick={obtenerUbicacionGPS} disabled={cargandoGPS} className="px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium border border-slate-300 whitespace-nowrap">
+                  <input type="text" value={ubicacion} onChange={(e) => setUbicacion(e.target.value)} placeholder="Ej. Santiago" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                  <button type="button" onClick={obtenerUbicacionGPS} disabled={cargandoGPS} className="px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium border whitespace-nowrap">
                     {cargandoGPS ? "⏳..." : "📍 GPS"}
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* 2. Sección Multimedia con OCR */}
+            {/* 2. Sección Multimedia y Guía de Cámara LED */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
               <div className="flex justify-between items-center border-b pb-2">
-                <h2 className="text-lg font-semibold text-slate-800">2. Multimedia y OCR (Lectura Automática)</h2>
+                <h2 className="text-lg font-semibold text-slate-800">2. Captura de Pantallas y Fotos</h2>
                 <div className="flex items-center gap-2">
-                  {leyendoOCR && <span className="text-xs text-indigo-600 font-semibold animate-pulse">🔍 Leyendo texto de foto...</span>}
+                  {leyendoOCR && <span className="text-xs text-indigo-600 font-semibold animate-pulse">🔍 Procesando OCR optimizado...</span>}
                   <span className="text-xs font-medium text-slate-500">{fotos.length} / 7 fotos</span>
+                </div>
+              </div>
+
+              {/* Guía visual para fotografiar pantallas */}
+              <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-xl text-xs text-indigo-900 flex items-start gap-2">
+                <span className="text-base">💡</span>
+                <div>
+                  <strong className="block mb-0.5">Consejo para fotos en pantallas LED:</strong>
+                  Dispara <b>lo más de frente posible</b> (evita ángulos laterales) y utiliza un leve zoom (2x) para minimizar las líneas de moiré y asegurar que Tesseract lea nítido el texto.
                 </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {fotos.map((fotoUrl, index) => (
-                  <div key={index} className="relative group aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-xs">
+                  <div key={index} className="relative group aspect-square bg-slate-100 rounded-xl overflow-hidden border shadow-xs">
                     <img src={fotoUrl} alt={`Captura ${index + 1}`} className="w-full h-full object-cover cursor-pointer hover:scale-105 transition" onClick={() => setFotoModal(fotoUrl)} />
-                    <button onClick={() => eliminarFoto(index)} className="absolute top-1.5 right-1.5 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs shadow">✕</button>
+                    <button onClick={() => eliminarFoto(index)} className="absolute top-1.5 right-1.5 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs">✕</button>
                     <span className="absolute bottom-1.5 left-1.5 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">#{index + 1}</span>
                   </div>
                 ))}
@@ -607,7 +648,7 @@ export default function BitacoraIA() {
                   <>
                     <label className="aspect-square border-2 border-dashed border-indigo-300 bg-indigo-50/40 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500 transition text-indigo-700">
                       <span className="text-2xl mb-1">📸</span>
-                      <span className="text-xs font-semibold text-center px-1">Tomar Foto</span>
+                      <span className="text-xs font-semibold text-center px-1">Tomar Foto Pantalla</span>
                       <input type="file" accept="image/*" capture="environment" onChange={handleProcesarArchivos} className="hidden" />
                     </label>
 
@@ -623,17 +664,16 @@ export default function BitacoraIA() {
 
             {/* 3. Apuntes */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-              <h2 className="text-lg font-semibold text-slate-800 border-b pb-2">3. Tus Notas Crudas y Texto Extraído</h2>
-
+              <h2 className="text-lg font-semibold text-slate-800 border-b pb-2">3. Notas y Síntesis</h2>
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                  Ingresa o complementa tus notas (El OCR agregará texto de fotos aquí)
+                  Notas Crudas (Texto OCR y anotaciones manuales)
                 </label>
                 <textarea 
                   rows={5} 
                   value={notasCrudas} 
                   onChange={(e) => setNotasCrudas(e.target.value)} 
-                  placeholder="Escribe tus apuntes o toma una foto para extraer texto automáticamente..."
+                  placeholder="El texto detectado de las pantallas aparecerá aquí automáticamente..."
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
                 ></textarea>
               </div>
@@ -647,10 +687,9 @@ export default function BitacoraIA() {
                     ))}
                     <span className="text-xs text-slate-500 ml-2">({estrellas}/5)</span>
                   </div>
-
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => setValoracion('like')} className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-medium ${valoracion === 'like' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-slate-200 text-slate-600'}`}>👍 Útil</button>
-                    <button type="button" onClick={() => setValoracion('dislike')} className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-medium ${valoracion === 'dislike' ? 'bg-rose-50 border-rose-500 text-rose-700' : 'bg-white border-slate-200 text-slate-600'}`}>👎 Poco útil</button>
+                    <button type="button" onClick={() => setValoracion('like')} className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-medium ${valoracion === 'like' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white text-slate-600'}`}>👍 Útil</button>
+                    <button type="button" onClick={() => setValoracion('dislike')} className={`flex-1 py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-medium ${valoracion === 'dislike' ? 'bg-rose-50 border-rose-500 text-rose-700' : 'bg-white text-slate-600'}`}>👎 Poco útil</button>
                   </div>
                 </div>
 
@@ -661,7 +700,6 @@ export default function BitacoraIA() {
               </div>
             </div>
 
-            {/* Acciones */}
             <div className="flex flex-wrap gap-3">
               <button 
                 type="button"
@@ -733,28 +771,7 @@ export default function BitacoraIA() {
               </div>
               
               <div className="space-y-2">
-                <input type="text" value={busquedaHistorial} onChange={(e) => setBusquedaHistorial(e.target.value)} placeholder="🔍 Buscar..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-slate-50" />
-
-                <div className="grid grid-cols-2 gap-2">
-                  <select value={filtroArea} onChange={(e) => setFiltroArea(e.target.value)} className="w-full px-2 py-1.5 border rounded text-xs bg-slate-50">
-                    <option value="TODOS">Todas las Áreas</option>
-                    <option value="IA & Tecnología">IA & Tecnología</option>
-                    <option value="Ciencias & Biotecnología">Ciencias & Biotecnología</option>
-                    <option value="Arquitectura & Urbanismo">Arquitectura & Urbanismo</option>
-                    <option value="Educación & EdTech">Educación & EdTech</option>
-                    <option value="Negocios & Innovación">Negocios & Innovación</option>
-                    <option value="Sustentabilidad & Reciclaje">Sustentabilidad</option>
-                  </select>
-
-                  <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)} className="w-full px-2 py-1.5 border rounded text-xs bg-slate-50">
-                    <option value="TODOS">Todos los Tipos</option>
-                    <option value="Seminario">Seminario</option>
-                    <option value="Taller">Taller</option>
-                    <option value="Conferencia">Conferencia</option>
-                    <option value="Terreno">Terreno</option>
-                    <option value="Reunión">Reunión</option>
-                  </select>
-                </div>
+                <input type="text" value={busquedaHistorial} onChange={(e) => setBusquedaHistorial(e.target.value)} placeholder="🔍 Buscar por título, organizador..." className="w-full px-3 py-2 border rounded-lg text-sm bg-slate-50" />
               </div>
 
               <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
@@ -766,22 +783,21 @@ export default function BitacoraIA() {
                     const estaEditando = editandoId === item.id;
 
                     return (
-                      <div key={item.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white transition space-y-3 relative group">
+                      <div key={item.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3 relative group">
                         <button onClick={() => borrarEntrada(item.id)} className="absolute top-3 right-3 text-slate-300 hover:text-red-500 text-xs">🗑️</button>
 
                         {!estaEditando ? (
                           <>
                             <div className="flex flex-wrap items-center gap-1 pr-6">
                               <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full">{item.tipo}</span>
-                              {item.area && <span className="text-[10px] font-semibold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full">🏷️ {item.area}</span>}
                               <span className="text-[10px] text-slate-400 ml-auto">📅 {item.fecha}</span>
                             </div>
 
                             <h3 className="text-sm font-bold text-slate-900">{item.titulo}</h3>
-                            {item.organizacion && <p className="text-xs text-slate-600 font-medium">🏢 {item.organizacion}</p>}
+                            <p className="text-xs text-slate-600 font-medium">🗣️ Expositor: {item.expositor} ({item.organizacion})</p>
                             <p className="text-xs text-slate-500">📍 {item.ubicacion}</p>
 
-                            <div className="text-xs bg-white p-2.5 rounded-lg border border-slate-200 text-slate-800 font-medium">
+                            <div className="text-xs bg-white p-2.5 rounded-lg border text-slate-800 font-medium">
                               {item.resumen}
                             </div>
 
@@ -794,7 +810,7 @@ export default function BitacoraIA() {
                             )}
 
                             {estaExpandido && (
-                              <div className="pt-2 border-t space-y-3 text-xs bg-slate-100/70 p-3 rounded-lg mt-2">
+                              <div className="pt-2 border-t space-y-3 text-xs bg-slate-100 p-3 rounded-lg mt-2">
                                 {item.notasCrudas && (
                                   <div>
                                     <span className="font-bold text-slate-600 uppercase text-[10px]">Apuntes Crudos:</span>
@@ -805,10 +821,10 @@ export default function BitacoraIA() {
                             )}
 
                             <div className="flex justify-between items-center pt-1 text-xs">
-                              <button onClick={() => toggleExpandir(item.id)} className="text-indigo-600 hover:text-indigo-800 font-semibold text-[11px]">
+                              <button onClick={() => toggleExpandir(item.id)} className="text-indigo-600 font-semibold text-[11px]">
                                 {estaExpandido ? "▲ Ocultar" : "📖 Ver todo"}
                               </button>
-                              <button onClick={() => iniciarEdicion(item)} className="bg-slate-200 text-slate-700 px-2.5 py-1 rounded-md text-[11px] font-medium">
+                              <button onClick={() => iniciarEdicion(item)} className="bg-slate-200 text-slate-700 px-2.5 py-1 rounded-md text-[11px]">
                                 ✏️ Editar
                               </button>
                             </div>
@@ -821,12 +837,12 @@ export default function BitacoraIA() {
                               <input type="text" value={editForm.titulo || ""} onChange={(e) => setEditForm({ ...editForm, titulo: e.target.value })} className="w-full text-xs p-1.5 border rounded bg-white" />
                             </div>
                             <div>
-                              <label className="text-[10px] uppercase font-bold text-slate-500">Notas</label>
-                              <textarea rows={3} value={editForm.notasCrudas || ""} onChange={(e) => setEditForm({ ...editForm, notasCrudas: e.target.value })} className="w-full text-xs p-1.5 border rounded bg-white font-mono"></textarea>
+                              <label className="text-[10px] uppercase font-bold text-slate-500">Expositor</label>
+                              <input type="text" value={editForm.expositor || ""} onChange={(e) => setEditForm({ ...editForm, expositor: e.target.value })} className="w-full text-xs p-1.5 border rounded bg-white" />
                             </div>
                             <div className="flex justify-end gap-2 pt-2">
-                              <button onClick={() => setEditandoId(null)} className="px-3 py-1 bg-slate-200 text-slate-700 text-xs rounded-lg">Cancelar</button>
-                              <button onClick={() => guardarEdicion(item.id)} className="px-3 py-1 bg-emerald-600 text-white text-xs rounded-lg font-medium">💾 Guardar</button>
+                              <button onClick={() => setEditandoId(null)} className="px-3 py-1 bg-slate-200 text-xs rounded-lg">Cancelar</button>
+                              <button onClick={() => guardarEdicion(item.id)} className="px-3 py-1 bg-emerald-600 text-white text-xs rounded-lg">💾 Guardar</button>
                             </div>
                           </div>
                         )}
@@ -842,12 +858,11 @@ export default function BitacoraIA() {
 
       </div>
 
-      {/* Modal Fotos */}
       {fotoModal && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setFotoModal(null)}>
           <div className="relative max-w-4xl max-h-[90vh]">
             <img src={fotoModal} alt="Ampliación" className="max-w-full max-h-[90vh] rounded-lg shadow-2xl" />
-            <button onClick={() => setFotoModal(null)} className="absolute -top-4 -right-4 bg-white text-slate-900 rounded-full w-8 h-8 flex items-center justify-center font-bold shadow">✕</button>
+            <button onClick={() => setFotoModal(null)} className="absolute -top-4 -right-4 bg-white text-slate-900 rounded-full w-8 h-8 flex items-center justify-center font-bold">✕</button>
           </div>
         </div>
       )}
