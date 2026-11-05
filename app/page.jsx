@@ -176,6 +176,14 @@ export default function BitacoraIA() {
   const [editandoId, setEditandoId] = useState(null);
   const [editForm, setEditForm] = useState({});
 
+  // METRICAS Y PRUEBAS DE CAMPO
+  const [metricasValidacion, setMetricasValidacion] = useState({
+    fotosProcesadasOCR: 0,
+    busquedasLinkedin: 0,
+    bitacorasCreadas: 0
+  });
+  const [mostrarDashboardMetricas, setMostrarDashboardMetricas] = useState(false);
+
   const fileInputRestaurarRef = useRef(null);
 
   useEffect(() => {
@@ -197,6 +205,11 @@ export default function BitacoraIA() {
           const reqHistorial = store.get("historial");
           reqHistorial.onsuccess = () => {
             if (reqHistorial.result) setHistorial(reqHistorial.result);
+          };
+
+          const reqMetricas = store.get("metricas_validacion");
+          reqMetricas.onsuccess = () => {
+            if (reqMetricas.result) setMetricasValidacion(reqMetricas.result);
           };
 
           const reqBorrador = store.get("borrador");
@@ -240,6 +253,14 @@ export default function BitacoraIA() {
     }
   };
 
+  const incrementarMetrica = (tipo) => {
+    setMetricasValidacion((prev) => {
+      const nuevasMetricas = { ...prev, [tipo]: (prev[tipo] || 0) + 1 };
+      guardarEnBD("metricas_validacion", nuevasMetricas);
+      return nuevasMetricas;
+    });
+  };
+
   useEffect(() => {
     const borradorActual = {
       titulo,
@@ -264,7 +285,6 @@ export default function BitacoraIA() {
     guardarEnBD("historial", nuevoHistorial);
   };
 
-  // OCR optimizado para bloques y columnas (PSM 4)
   const reconocerTextoFoto = async (imageSrc) => {
     setLeyendoOCR(true);
     try {
@@ -281,6 +301,7 @@ export default function BitacoraIA() {
 
       if (textoDetectado && textoDetectado.trim().length > 3) {
         setNotasCrudas((prev) => prev + "\n[OCR Bloques de Pantalla]: " + textoDetectado.trim());
+        incrementarMetrica("fotosProcesadasOCR");
       }
     } catch (err) {
       console.error("Error en OCR:", err);
@@ -290,7 +311,12 @@ export default function BitacoraIA() {
   };
 
   const exportarRespaldoJSON = () => {
-    const datosRespaldo = { version: 1, fechaRespaldo: new Date().toISOString(), historial };
+    const datosRespaldo = { 
+      version: 1, 
+      fechaRespaldo: new Date().toISOString(), 
+      metricasValidacion: metricasValidacion,
+      historial: historial 
+    };
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(datosRespaldo, null, 2));
     const downloadAnchor = document.createElement("a");
     downloadAnchor.setAttribute("href", dataStr);
@@ -312,6 +338,10 @@ export default function BitacoraIA() {
               const fusionados = [...parsedData.historial, ...historial];
               const unicos = Array.from(new Map(fusionados.map(item => [item.id, item])).values());
               actualizarHistorialBD(unicos);
+              if (parsedData.metricasValidacion) {
+                setMetricasValidacion(parsedData.metricasValidacion);
+                guardarEnBD("metricas_validacion", parsedData.metricasValidacion);
+              }
               alert("¡Respaldo importado con éxito!");
             }
           } else {
@@ -398,6 +428,7 @@ export default function BitacoraIA() {
       alert("Ingresa el nombre del expositor primero en su campo correspondiente.");
       return;
     }
+    incrementarMetrica("busquedasLinkedin");
     window.open(`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(expositor)}`, "_blank");
   };
 
@@ -460,6 +491,8 @@ export default function BitacoraIA() {
 
     const actualizado = [nuevaEntrada, ...historial];
     actualizarHistorialBD(actualizado);
+    incrementarMetrica("bitacorasCreadas");
+
     alert("¡Entrada guardada correctamente!");
     limpiarBorrador();
   };
@@ -518,13 +551,20 @@ export default function BitacoraIA() {
         <header className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-              <span>📓</span> Bitácora IA: Asistente Pro
+              <span>📓</span> Bitácora IA: Validaciones en Terreno
             </h1>
             <p className="text-sm text-slate-500">
-              Captura optimizada para pantallas LED, OCR por bloques y LinkedIn por expositor.
+              Herramienta privada de captura, OCR local de diapositivas y síntesis algorítmica.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button 
+              onClick={() => setMostrarDashboardMetricas(!mostrarDashboardMetricas)} 
+              type="button" 
+              className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg font-bold border border-indigo-200 transition"
+            >
+              📊 Métricas ({metricasValidacion.bitacorasCreadas})
+            </button>
             <button onClick={exportarRespaldoJSON} type="button" className="text-xs bg-sky-50 hover:bg-sky-100 text-sky-700 px-3 py-1.5 rounded-lg font-medium border border-sky-200">
               📥 Respaldar
             </button>
@@ -537,6 +577,41 @@ export default function BitacoraIA() {
             </button>
           </div>
         </header>
+
+        {/* Panel de Métricas para Start-Up Chile Build */}
+        {mostrarDashboardMetricas && (
+          <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-lg border border-slate-700 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-indigo-400">
+                🚀 Módulo de Validación de Campo (Start-Up Chile Build Metrics)
+              </h3>
+              <button onClick={() => setMostrarDashboardMetricas(false)} className="text-slate-400 hover:text-white text-xs">✕ Cerrar</button>
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Bitácoras Creadas</span>
+                <span className="text-2xl font-black text-emerald-400">{metricasValidacion.bitacorasCreadas}</span>
+              </div>
+              <div className="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Fotos Leídas con OCR</span>
+                <span className="text-2xl font-black text-sky-400">{metricasValidacion.fotosProcesadasOCR}</span>
+              </div>
+              <div className="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Clicks LinkedIn Expositor</span>
+                <span className="text-2xl font-black text-indigo-400">{metricasValidacion.busquedasLinkedin}</span>
+              </div>
+              <div className="bg-slate-800 p-3 rounded-xl border border-slate-700">
+                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Registros en Historial</span>
+                <span className="text-2xl font-black text-amber-400">{historial.length}</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              💡 <b>Nota para el evaluador:</b> Estas métricas se almacenan localmente y se incluyen automáticamente al presionar el botón <b>📥 Respaldar</b> para descargar la evidencia de tracción del prototipo.
+            </p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
@@ -617,7 +692,7 @@ export default function BitacoraIA() {
               </div>
             </div>
 
-            {/* 2. Sección Multimedia y Guía de Cámara LED */}
+            {/* 2. Sección Multimedia */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
               <div className="flex justify-between items-center border-b pb-2">
                 <h2 className="text-lg font-semibold text-slate-800">2. Captura de Pantallas y Fotos</h2>
@@ -631,7 +706,7 @@ export default function BitacoraIA() {
                 <span className="text-base">💡</span>
                 <div>
                   <strong className="block mb-0.5">Consejo para fotos en pantallas LED:</strong>
-                  Dispara <b>lo más de frente posible</b> (evita ángulos laterales) y utiliza un leve zoom (2x) para minimizar las líneas de moiré y asegurar que Tesseract lea nítido el texto.
+                  Dispara <b>lo más de frente posible</b> (evita ángulos laterales) y utiliza un leve zoom (2x) para minimizar las líneas de moiré.
                 </div>
               </div>
 
@@ -662,9 +737,9 @@ export default function BitacoraIA() {
               </div>
             </div>
 
-            {/* 3. Apuntes */}
+            {/* 3. Apuntes y Testimonios */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-              <h2 className="text-lg font-semibold text-slate-800 border-b pb-2">3. Notas y Síntesis</h2>
+              <h2 className="text-lg font-semibold text-slate-800 border-b pb-2">3. Notas y Evaluación de Usuario</h2>
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
                   Notas Crudas (Texto OCR y anotaciones manuales)
@@ -680,7 +755,7 @@ export default function BitacoraIA() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Valoración</label>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Valoración del Evento</label>
                   <div className="flex items-center gap-1 mb-3">
                     {[1, 2, 3, 4, 5].map((star) => (
                       <button key={star} type="button" onClick={() => setEstrellas(star)} className={`text-2xl transition ${star <= estrellas ? 'text-amber-400 scale-110' : 'text-slate-200'}`}>★</button>
@@ -694,8 +769,8 @@ export default function BitacoraIA() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Comentario Personal</label>
-                  <textarea rows={3} value={opinion} onChange={(e) => setOpinion(e.target.value)} placeholder="Comentario personal..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></textarea>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Testimonio / Comentario de Uso</label>
+                  <textarea rows={3} value={opinion} onChange={(e) => setOpinion(e.target.value)} placeholder="¿Esta herramienta te ahorró tiempo? Escribe un comentario..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></textarea>
                 </div>
               </div>
             </div>
