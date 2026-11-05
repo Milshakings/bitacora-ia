@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import "./globals.css";
 import { createWorker } from 'tesseract.js';
 
-// Preprocesamiento de imagen para mejorar OCR en pantallas LED (contraste y binarización)
+// Preprocesamiento de imagen para mejorar OCR en pantallas LED
 const preprocesarImagenParaOCR = (base64Str, maxWidth = 1000) => {
   return new Promise((resolve) => {
     const img = new Image();
@@ -24,13 +24,11 @@ const preprocesarImagenParaOCR = (base64Str, maxWidth = 1000) => {
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0, width, height);
 
-      // Mejorar contraste para pantallas LED
       const imgData = ctx.getImageData(0, 0, width, height);
       const data = imgData.data;
       for (let i = 0; i < data.length; i += 4) {
-        // Promedio de grises con realce de contraste
         let avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-        let c = avg < 120 ? 0 : 255; // Binarización adaptativa simple
+        let c = avg < 120 ? 0 : 255;
         data[i] = c;
         data[i + 1] = c;
         data[i + 2] = c;
@@ -148,7 +146,7 @@ function sintetizarTextoAlgoritmico(textoOriginal, area) {
 
 export default function BitacoraIA() {
   const [titulo, setTitulo] = useState("");
-  const [expositor, setExpositor] = useState(""); // Campo independiente para el expositor
+  const [expositor, setExpositor] = useState("");
   const [organizacion, setOrganizacion] = useState("");
   const [tipoEvento, setTipoEvento] = useState("Seminario");
   const [areaTematica, setAreaTematica] = useState("IA & Tecnología");
@@ -266,18 +264,23 @@ export default function BitacoraIA() {
     guardarEnBD("historial", nuevoHistorial);
   };
 
-  // OCR optimizado con preprocesamiento de imagen
+  // OCR optimizado para bloques y columnas (PSM 4)
   const reconocerTextoFoto = async (imageSrc) => {
     setLeyendoOCR(true);
     try {
       const imagenOptimizada = await preprocesarImagenParaOCR(imageSrc, 1000);
       const worker = await createWorker('spa');
+      
+      await worker.setParameters({
+        tessedit_pageseg_mode: '4',
+      });
+
       const ret = await worker.recognize(imagenOptimizada);
       const textoDetectado = ret.data.text;
       await worker.terminate();
 
       if (textoDetectado && textoDetectado.trim().length > 3) {
-        setNotasCrudas((prev) => prev + "\n[OCR Pantalla]: " + textoDetectado.trim());
+        setNotasCrudas((prev) => prev + "\n[OCR Bloques de Pantalla]: " + textoDetectado.trim());
       }
     } catch (err) {
       console.error("Error en OCR:", err);
@@ -390,7 +393,6 @@ export default function BitacoraIA() {
     );
   };
 
-  // Botón LinkedIn enfocado 100% en el Expositor
   const abrirLinkedinExpositor = () => {
     if (!expositor) {
       alert("Ingresa el nombre del expositor primero en su campo correspondiente.");
@@ -519,7 +521,7 @@ export default function BitacoraIA() {
               <span>📓</span> Bitácora IA: Asistente Pro
             </h1>
             <p className="text-sm text-slate-500">
-              Captura optimizada para pantallas LED, OCR mejorado y LinkedIn por expositor.
+              Captura optimizada para pantallas LED, OCR por bloques y LinkedIn por expositor.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -597,7 +599,6 @@ export default function BitacoraIA() {
                 </div>
               </div>
 
-              {/* Botón LinkedIn exclusivo para el expositor */}
               <div className="pt-2 flex flex-wrap gap-2 items-center border-t border-slate-100">
                 <span className="text-xs font-semibold text-slate-400 uppercase mr-1">Búsquedas:</span>
                 <button type="button" onClick={abrirLinkedinExpositor} className="px-3 py-1 bg-sky-50 text-sky-700 text-xs font-medium rounded-lg border border-sky-200">💼 LinkedIn Expositor</button>
@@ -621,12 +622,11 @@ export default function BitacoraIA() {
               <div className="flex justify-between items-center border-b pb-2">
                 <h2 className="text-lg font-semibold text-slate-800">2. Captura de Pantallas y Fotos</h2>
                 <div className="flex items-center gap-2">
-                  {leyendoOCR && <span className="text-xs text-indigo-600 font-semibold animate-pulse">🔍 Procesando OCR optimizado...</span>}
+                  {leyendoOCR && <span className="text-xs text-indigo-600 font-semibold animate-pulse">🔍 Procesando OCR por bloques...</span>}
                   <span className="text-xs font-medium text-slate-500">{fotos.length} / 7 fotos</span>
                 </div>
               </div>
 
-              {/* Guía visual para fotografiar pantallas */}
               <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-xl text-xs text-indigo-900 flex items-start gap-2">
                 <span className="text-base">💡</span>
                 <div>
