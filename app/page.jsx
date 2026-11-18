@@ -4,7 +4,6 @@ import React, { useState, useEffect, useRef } from "react";
 import "./globals.css";
 import { createWorker } from 'tesseract.js';
 
-// Preprocesamiento de imagen para mejorar OCR en pantallas LED
 const preprocesarImagenParaOCR = (base64Str, maxWidth = 1000) => {
   return new Promise((resolve) => {
     const img = new Image();
@@ -176,7 +175,6 @@ export default function BitacoraIA() {
   const [editandoId, setEditandoId] = useState(null);
   const [editForm, setEditForm] = useState({});
 
-  // METRICAS Y PRUEBAS DE CAMPO
   const [metricasValidacion, setMetricasValidacion] = useState({
     fotosProcesadasOCR: 0,
     busquedasLinkedin: 0,
@@ -285,22 +283,32 @@ export default function BitacoraIA() {
     guardarEnBD("historial", nuevoHistorial);
   };
 
+  const insertarFormatoTexto = (tagInicio, tagFin = "") => {
+    const textarea = document.getElementById("textarea-notas");
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const textoSeleccionado = notasCrudas.substring(start, end);
+    const nuevoTexto = notasCrudas.substring(0, start) + tagInicio + textoSeleccionado + tagFin + notasCrudas.substring(end);
+    setNotasCrudas(nuevoTexto);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + tagInicio.length, end + tagInicio.length);
+    }, 0);
+  };
+
   const reconocerTextoFoto = async (imageSrc) => {
     setLeyendoOCR(true);
     try {
       const imagenOptimizada = await preprocesarImagenParaOCR(imageSrc, 1000);
       const worker = await createWorker('spa');
-      
-      await worker.setParameters({
-        tessedit_pageseg_mode: '4',
-      });
-
+      await worker.setParameters({ tessedit_pageseg_mode: '4' });
       const ret = await worker.recognize(imagenOptimizada);
       const textoDetectado = ret.data.text;
       await worker.terminate();
 
       if (textoDetectado && textoDetectado.trim().length > 3) {
-        setNotasCrudas((prev) => prev + "\n[OCR Bloques de Pantalla]: " + textoDetectado.trim());
+        setNotasCrudas((prev) => prev + "\n\n> 📸 **[OCR Pantalla]:** " + textoDetectado.trim());
         incrementarMetrica("fotosProcesadasOCR");
       }
     } catch (err) {
@@ -314,8 +322,8 @@ export default function BitacoraIA() {
     const datosRespaldo = { 
       version: 1, 
       fechaRespaldo: new Date().toISOString(), 
-      metricasValidacion: metricasValidacion,
-      historial: historial 
+      metricasValidacion,
+      historial 
     };
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(datosRespaldo, null, 2));
     const downloadAnchor = document.createElement("a");
@@ -462,7 +470,6 @@ export default function BitacoraIA() {
     if (!titulo) return alert("Asigna un título antes de guardar.");
 
     const analisisFinal = resultadoExperto || sintetizarTextoAlgoritmico(notasCrudas, areaFinal);
-
     const fechaObj = new Date(fechaEvento);
     const fechaFormateada = isNaN(fechaObj.getTime())
       ? new Date().toLocaleString("es-CL")
@@ -551,10 +558,10 @@ export default function BitacoraIA() {
         <header className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-              <span>📓</span> Bitácora IA: Validaciones en Terreno
+              <span>📓</span> Bitácora IA: Alternativa Digital al Papel
             </h1>
             <p className="text-sm text-slate-500">
-              Herramienta privada de captura, OCR local de diapositivas y síntesis algorítmica.
+              Captura, OCR local, formato enriquecido y síntesis ejecutiva para profesionales en terreno.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -578,16 +585,14 @@ export default function BitacoraIA() {
           </div>
         </header>
 
-        {/* Panel de Métricas para Start-Up Chile Build */}
         {mostrarDashboardMetricas && (
           <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-lg border border-slate-700 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-700 pb-3">
               <h3 className="text-sm font-bold uppercase tracking-wider text-indigo-400">
-                🚀 Módulo de Validación de Campo (Start-Up Chile Build Metrics)
+                🚀 Módulo de Validación de Campo (Start-Up Chile Build)
               </h3>
               <button onClick={() => setMostrarDashboardMetricas(false)} className="text-slate-400 hover:text-white text-xs">✕ Cerrar</button>
             </div>
-            
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-slate-800 p-3 rounded-xl border border-slate-700">
                 <span className="text-[10px] text-slate-400 font-semibold block uppercase">Bitácoras Creadas</span>
@@ -606,10 +611,6 @@ export default function BitacoraIA() {
                 <span className="text-2xl font-black text-amber-400">{historial.length}</span>
               </div>
             </div>
-
-            <p className="text-xs text-slate-400">
-              💡 <b>Nota para el evaluador:</b> Estas métricas se almacenan localmente y se incluyen automáticamente al presionar el botón <b>📥 Respaldar</b> para descargar la evidencia de tracción del prototipo.
-            </p>
           </div>
         )}
 
@@ -702,14 +703,6 @@ export default function BitacoraIA() {
                 </div>
               </div>
 
-              <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-xl text-xs text-indigo-900 flex items-start gap-2">
-                <span className="text-base">💡</span>
-                <div>
-                  <strong className="block mb-0.5">Consejo para fotos en pantallas LED:</strong>
-                  Dispara <b>lo más de frente posible</b> (evita ángulos laterales) y utiliza un leve zoom (2x) para minimizar las líneas de moiré.
-                </div>
-              </div>
-
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {fotos.map((fotoUrl, index) => (
                   <div key={index} className="relative group aspect-square bg-slate-100 rounded-xl overflow-hidden border shadow-xs">
@@ -737,18 +730,33 @@ export default function BitacoraIA() {
               </div>
             </div>
 
-            {/* 3. Apuntes y Testimonios */}
+            {/* 3. Apuntes con barra de herramientas de formato (Negrita, Destacar, Cita) */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-              <h2 className="text-lg font-semibold text-slate-800 border-b pb-2">3. Notas y Evaluación de Usuario</h2>
+              <h2 className="text-lg font-semibold text-slate-800 border-b pb-2">3. Notas y Opciones de Formato (Reemplazo del Bloc de Papel)</h2>
+              
+              {/* Barra de herramientas para destacar y colocar negrita como un Post-it digital */}
+              <div className="flex flex-wrap gap-2 pb-1">
+                <button type="button" onClick={() => insertarFormatoTexto("**", "**")} className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border">
+                  <b>B (Negrita)</b>
+                </button>
+                <button type="button" onClick={() => insertarFormatoTexto("*", "*")} className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs italic rounded-lg border">
+                  <i>I (Cursiva)</i>
+                </button>
+                <button type="button" onClick={() => insertarFormatoTexto("\n> 💡 **Idea Clave:** ")} className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-medium rounded-lg border border-amber-200">
+                  📌 Destacar Post-it
+                </button>
+                <button type="button" onClick={() => insertarFormatoTexto("\n- [ ] ")} className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-medium rounded-lg border border-emerald-200">
+                  ☑️ Tarea
+                </button>
+              </div>
+
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
-                  Notas Crudas (Texto OCR y anotaciones manuales)
-                </label>
                 <textarea 
-                  rows={5} 
+                  id="textarea-notas"
+                  rows={6} 
                   value={notasCrudas} 
                   onChange={(e) => setNotasCrudas(e.target.value)} 
-                  placeholder="El texto detectado de las pantallas aparecerá aquí automáticamente..."
+                  placeholder="El texto escaneado de las diapositivas o tus notas manuales aparecerán aquí. Usa los botones de arriba para destacar o poner negritas..."
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
                 ></textarea>
               </div>
@@ -769,8 +777,8 @@ export default function BitacoraIA() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Testimonio / Comentario de Uso</label>
-                  <textarea rows={3} value={opinion} onChange={(e) => setOpinion(e.target.value)} placeholder="¿Esta herramienta te ahorró tiempo? Escribe un comentario..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></textarea>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Testimonio / Comentario</label>
+                  <textarea rows={3} value={opinion} onChange={(e) => setOpinion(e.target.value)} placeholder="Comentario personal de uso..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"></textarea>
                 </div>
               </div>
             </div>
