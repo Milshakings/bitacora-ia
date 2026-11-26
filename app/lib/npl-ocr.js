@@ -2,7 +2,6 @@
 
 import { createWorker } from "tesseract.js";
 
-// Mejora de contraste adaptativo suave: evita cortar letras finas o tildes en pantallas/slides
 export function preprocesarImagenParaOCR(base64Str, maxWidth = 1400) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -12,8 +11,7 @@ export function preprocesarImagenParaOCR(base64Str, maxWidth = 1400) {
       let width = img.width;
       let height = img.height;
 
-      // Escalar hacia arriba si la imagen es pequeña para mejorar nitidez en OCR
-      if (width < 900 && width > 0) {
+      if (width > 0 && width < 900) {
         const factor = 900 / width;
         width = Math.round(width * factor);
         height = Math.round(height * factor);
@@ -32,13 +30,16 @@ export function preprocesarImagenParaOCR(base64Str, maxWidth = 1400) {
       const imgData = ctx.getImageData(0, 0, width, height);
       const data = imgData.data;
 
-      // Escala de grises + realce de contraste controlado (sin aplastar a blanco/negro puro)
       const contraste = 1.35;
-      const factorContraste = (259 * (contraste * 100 + 255)) / (255 * (259 - contraste * 100));
+      const factorContraste =
+        (259 * (contraste * 100 + 255)) / (255 * (259 - contraste * 100));
 
       for (let i = 0; i < data.length; i += 4) {
         const gris = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-        const ajustado = Math.max(0, Math.min(255, factorContraste * (gris - 128) + 128));
+        const ajustado = Math.max(
+          0,
+          Math.min(255, factorContraste * (gris - 128) + 128)
+        );
         data[i] = ajustado;
         data[i + 1] = ajustado;
         data[i + 2] = ajustado;
@@ -80,7 +81,6 @@ function limpiarRuidoOCR(texto) {
     .replace(/[^\S\r\n]+/g, " ")
     .split("\n")
     .map((linea) => linea.trim())
-    // Filtra líneas sueltas de 1-2 caracteres sin sentido que suelen ser ruido de borde/moiré
     .filter((linea) => linea.length >= 3 || /^[A-Z0-9%$]$/.test(linea))
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
@@ -110,7 +110,6 @@ export function sintetizarTextoAlgoritmico(textoOriginal, area = "General") {
     };
   }
 
-  // Limpia marcadores markdown para puntuar oraciones con limpieza
   const textoLimpio = textoOriginal
     .replace(/\*\*|__|\*|_|>\s*💡\s*/g, "")
     .replace(/-\s*\[\s*[xX ]?\s*\]/g, "");
