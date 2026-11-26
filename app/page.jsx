@@ -249,7 +249,8 @@ export default function BitacoraIA() {
 
   const sintetizar = () => {
     if (!titulo && fotos.length === 0 && !notasCrudas.trim()) {
-      return alert("Escribe notas o agrega un título antes de procesar.");
+      alert("Escribe notas o agrega un título antes de procesar.");
+      return;
     }
     setCargandoIA(true);
     setTimeout(() => {
@@ -259,4 +260,145 @@ export default function BitacoraIA() {
   };
 
   const guardarEntrada = async () => {
-    if (!titulo) return alert
+    if (!titulo.trim()) {
+      alert("Asigna un título antes de guardar.");
+      return;
+    }
+    const analisis = resultadoExperto || sintetizarTextoAlgoritmico(notasCrudas, areaFinal);
+    const fechaObj = new Date(fechaEvento);
+    const fechaFmt = isNaN(fechaObj.getTime())
+      ? new Date().toLocaleString("es-CL")
+      : fechaObj.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
+
+    const entrada = {
+      id: Date.now(),
+      titulo: titulo.trim(),
+      expositor: expositor || "No especificado",
+      organizacion: organizacion || "No especificada",
+      ubicacion: ubicacion || "Lugar no registrado",
+      tipo: tipoEvento,
+      area: areaFinal,
+      fecha: fechaFmt,
+      fechaISO: fechaEvento,
+      estrellas,
+      valoracion,
+      opinion,
+      notasCrudas,
+      resumen: analisis.resumen,
+      puntosClave: analisis.puntosClave,
+      datosMetricas: analisis.datosYMetricas,
+      tareas: analisis.accionesSugeridas,
+      fotos: [...fotos]
+    };
+
+    await actualizarHistorial([entrada, ...historial]);
+    await incrementarMetrica("bitacorasCreadas");
+    alert("¡Entrada guardada correctamente!");
+    limpiarBorrador();
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-100 text-slate-800 p-4 md:p-8 font-sans">
+      <div className="max-w-7xl mx-auto space-y-6">
+        <HeaderMetricas
+          perfilActivo={perfilActivo}
+          setPerfilActivo={setPerfilActivo}
+          metricasValidacion={metricasValidacion}
+          totalHistorial={historial.length}
+          onExportar={exportarJSON}
+          onImportar={importarJSON}
+          onLimpiar={limpiarBorrador}
+          onResetDemo={resetDemo}
+        />
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <SeccionEvento
+              perfilActivo={perfilActivo}
+              titulo={titulo}
+              setTitulo={setTitulo}
+              expositor={expositor}
+              setExpositor={setExpositor}
+              organizacion={organizacion}
+              setOrganizacion={setOrganizacion}
+              fechaEvento={fechaEvento}
+              setFechaEvento={setFechaEvento}
+              areaTematica={areaTematica}
+              setAreaTematica={setAreaTematica}
+              areaPersonalizada={areaPersonalizada}
+              setAreaPersonalizada={setAreaPersonalizada}
+              tipoEvento={tipoEvento}
+              setTipoEvento={setTipoEvento}
+              ubicacion={ubicacion}
+              setUbicacion={setUbicacion}
+              panelistas={panelistas}
+              setPanelistas={setPanelistas}
+              onInsertarTurno={insertarTurnoEnNotas}
+              onLinkedin={() => {
+                if (!expositor) {
+                  alert("Ingresa el nombre del expositor primero.");
+                  return;
+                }
+                incrementarMetrica("busquedasLinkedin");
+                window.open(
+                  `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(expositor)}`,
+                  "_blank"
+                );
+              }}
+              onGoogle={() => {
+                if (!organizacion && !titulo && !expositor) {
+                  alert("Ingresa datos de búsqueda primero.");
+                  return;
+                }
+                window.open(
+                  `https://www.google.com/search?q=${encodeURIComponent(`${expositor} ${organizacion} ${titulo}`)}`,
+                  "_blank"
+                );
+              }}
+              onScholar={() => {
+                if (!titulo && !expositor) {
+                  alert("Ingresa un tema o expositor primero.");
+                  return;
+                }
+                window.open(
+                  `https://scholar.google.com/scholar?q=${encodeURIComponent(`${expositor} ${titulo}`)}`,
+                  "_blank"
+                );
+              }}
+              onGPS={obtenerGPS}
+              cargandoGPS={cargandoGPS}
+            />
+
+            <SeccionMultimedia
+              fotos={fotos}
+              setFotos={setFotos}
+              onTextoOCR={(bloque) => setNotasCrudas((prev) => prev + bloque)}
+              onIncrementarOCR={() => incrementarMetrica("fotosProcesadasOCR")}
+            />
+
+            <SeccionNotasSintesis
+              notasCrudas={notasCrudas}
+              setNotasCrudas={setNotasCrudas}
+              estrellas={estrellas}
+              setEstrellas={setEstrellas}
+              valoracion={valoracion}
+              setValoracion={setValoracion}
+              opinion={opinion}
+              setOpinion={setOpinion}
+              resultadoExperto={resultadoExperto}
+              cargandoIA={cargandoIA}
+              onSintetizar={sintetizar}
+              onGuardar={guardarEntrada}
+            />
+          </div>
+
+          <HistorialPanel
+            perfilActivo={perfilActivo}
+            historial={historial}
+            onActualizarHistorial={actualizarHistorial}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
